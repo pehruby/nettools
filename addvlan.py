@@ -6,7 +6,8 @@ import re
 import getopt
 import os
 from netmiko import ConnectHandler
-
+from netmiko.ssh_exception import NetMikoTimeoutException
+from paramiko.ssh_exception import SSHException
 
 def get_intlist_vlan(handler, vlan):
     ''' Returns list of all (both access andf trunks) interfaces where VLAN vlan is configured
@@ -57,9 +58,9 @@ def normalize_vlan_list(vlset):
         intstr = re.match(r"([0-9]+)-([0-9]+)", item)   # matches for example 2345-2358
         if intstr:
             for subit in range(int(intstr.group(1)), int(intstr.group(2))+1): # +1 because last number is excluded from iteration
-                outset.append(str(subit))       # add number inside the range to output set
+                outset.append(str(subit))       # add number inside the range to output list
         else:
-            outset.append(item)            # add number inputy set to output set
+            outset.append(item)            # add number input set to output list
     return outset
 
 
@@ -178,7 +179,7 @@ def main():
     -u,     --username                  username
     -p,     --password                  password, optional
     -c,     --cfgfile                   cfg file with IP addresses list, one IP per line
-    -v,     --vlan                      vlan already configured in allowed list on trunk
+    -m,     --vlan                      vlan already configured in allowed list on trunk
     -n,     --newvlan                   new vlan added to allowed list
     '''
 
@@ -259,30 +260,42 @@ def main():
     elif paction == 'p':
         print("Script is running in process mode. Devices Configuration WILL BE CHANGED !!!")
 
-    for switch in device_ip_list:           # go throug all switches
+    for switch in device_ip_list:           # go through all switches
+        int_trunk_list = []
+        nr_iface_configured = 0             # counter for number of interfaces affected on this switch
         print("\nProcessing device:", switch)
-        net_connect = ConnectHandler(device_type='cisco_ios', ip=switch, username=username, password=pswd)
+        try:
+            net_connect = ConnectHandler(device_type='cisco_ios', ip=switch, username=username, password=pswd)
+        except NetMikoTimeoutException:
+            print("- unable to connect to the device, timeout")
+            continue
+        except (EOFError, SSHException):
+            print("- unable to connect to the device, error")
+            continue
         if not is_it_switch(net_connect):
-            print("-device is probably not a switch")
+            print("- device is probably not a switch")
             continue
         int_list = get_intlist_vlan(net_connect, vlan_match)    # get interfaces list where specific vlan configured
 
         if int_list:    # is any interface configured in vlan_match ?
             for interface in int_list:      # select trunk interfaces where "allowed vlans" command is configured
-                #print("Interface: " + interface)
-                tmplist = list_trunking_vlans_enabled(net_connect, interface) # trunks only
-                #print(tmplist)
-                if is_int_admin_trunk(net_connect, interface) and is_int_allowed_vlan_configured(net_connect, interface):
+                if is_int_admin_trunk(net_connect, interface) and is_int_allowed_vlan_configured(net_connect, interface): # is interface trunk with allowed Vlans configured?
                     int_trunk_list.append(interface)
 
 
             #print(int_list)
             #print(int_trunk_list)
             for interface in int_trunk_list:
+                enabled_trunk_vlan_list = list_trunking_vlans_enabled(net_connect, interface) # list of Vlan configured as allowed on the interface
+                if vlan_new in enabled_trunk_vlan_list:     # new vlan already configured on interface
+                    continue                                # continuw with processing of next interface
                 if paction == 't':    # test only
-                    print("-interface", interface, "would have been changed (test mode)")
+                    print("- interface", interface, "would have been changed (test mode)")
+                nr_iface_configured = nr_iface_configured + 1
         else:
-            print("-no interface configured in Vlan", vlan_match)
+            print("- no interface configured in Vlan", vlan_match)
+        if paction == 't':    # test only
+            print("-", nr_iface_configured, "interface(s) would have been changed")
 
         net_connect.disconnect()        # disconnect from the switch
 
