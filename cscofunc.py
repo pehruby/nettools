@@ -1,9 +1,15 @@
+''' Module implements functions which read/change configuration of Cisco equipment
+
+'''
+
+# pylint: disable=C0301, C0103
 
 import sys
 import re
 
 def get_intlist_vlan(handler, vlan):
-    ''' Returns list of all (both access andf trunks) interfaces where VLAN vlan is configured
+    ''' Returns list of all (both access andf trunks) interfaces where VLAN 'vlan' is configured
+        paremeter 'handler' is existing handler created using Netmiko CreateHandler function
 
     '''
     str_vlan = str(vlan)
@@ -124,10 +130,13 @@ def is_ip_valid(testedip):
 def is_valid_vlan_number(vnum):
     ''' Check if vnum is valid VLAN number
     '''
+    try:
+        vnum = int(vnum)
+    except ValueError:
+        return False
 
-    if isinstance(vnum, int):
-        if vnum > 0 and vnum < 4097:
-            return True
+    if vnum > 0 and vnum < 4095:
+        return True
     return False
 
 def add_vlan_to_int_trunk_allowed(handler, interface, vlan):
@@ -147,3 +156,36 @@ def is_vlan_in_allowed_list(handler, interface, vlan):
     if vlan in enabled_trunk_vlan_list:
         return True
     return False
+
+def is_vlan_configured(handler, vlan):
+    ''' Checks if vlan is configured on the switch
+    '''
+    cli_param = "sh vlan"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')
+    for line in cli_out_split:
+        if re.match(r"^" + vlan, line):   #find line with vlan number
+            return True
+
+    return False
+
+def is_valid_vlan_name(name):
+    ''' Is it valid VLAN name ?
+    '''
+    #matchobj = re.match(r"^[a-zA-Z0-9]+$", name)
+    if re.match(r"^[a-zA-Z0-9_\-]+$", name) and (len(name) <= 32):
+        return True
+    return False
+
+
+def configure_vlan(handler, vlan, vlan_name=''):
+    ''' Configure (add) vlan on the switch
+    '''
+    if vlan_name:
+        cfg_cmds = ['vlan '+ vlan, 'name '+ vlan_name]
+    else:
+        cfg_cmds = ['vlan '+ vlan]
+    output = handler.send_config_set(cfg_cmds)
+    if ('^' in output) or ('%' in output):      # probably something wrong happened
+        return False
+    return True

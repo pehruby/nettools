@@ -2,7 +2,6 @@
 
 import sys
 import getpass
-import re
 import getopt
 import os
 from netmiko import ConnectHandler
@@ -56,6 +55,7 @@ def main():
     -c,     --cfgfile                   cfg file with IP addresses list, one IP per line
     -m,     --vlan                      vlan already configured in allowed list on trunk
     -n,     --newvlan                   new vlan added to allowed list
+    -e,     --newvlanname               name of the new vlan in quotation marks, i.e. -e "VlanName1"
     '''
 
     int_trunk_list = []     # list of interfaces where vlan is configured and interface is in trunk mode
@@ -64,6 +64,8 @@ def main():
     config_file = ''
     vlan_match = ''
     vlan_new = ''
+    vlan_new_name = ''      # name of the new Vlan, optional
+    vlan_new_not_configured = False
     username = ''
     debug = False
     pswd = ''
@@ -73,7 +75,7 @@ def main():
     argv = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(argv, "vwhp:i:c:u:a:m:n:", ["verbose", "help", "writeconf", "password=", "ipaddr=", "cfgfile=", "username=", "action=", "matchedvlan=", "newvlan="])
+        opts, args = getopt.getopt(argv, "vwhp:i:c:u:a:m:n:e:", ["verbose", "help", "writeconf", "password=", "ipaddr=", "cfgfile=", "username=", "action=", "matchedvlan=", "newvlan=", "newvlanname="])
     except getopt.GetoptError:
         print(usage_str)
         sys.exit(2)
@@ -99,6 +101,8 @@ def main():
             vlan_match = arg
         elif opt in ("-n", "--newvlan"):
             vlan_new = arg
+        elif opt in ("-e", "--newvlanname"):
+            vlan_new_name = arg
 
     # sanity checks
     if (not ip_of_switch) and (not config_file):        # both variables are empty
@@ -120,6 +124,17 @@ def main():
     if not username:
         print("Username is not specified")
         sys.exit(2)
+    if not cscofunc.is_valid_vlan_number(vlan_match):
+        print("Matched Vlan number is not valid")
+        sys.exit(2)
+    if not cscofunc.is_valid_vlan_number(vlan_new):
+        print("New Vlan number " + vlan_new + " is not valid")
+        sys.exit(2)
+    if vlan_new_name:
+        if not cscofunc.is_valid_vlan_name(vlan_new_name):
+            print("New Vlan name", vlan_new_name, "is not valid")
+            sys.exit(2)
+
 
     if pswd == '':
         pswd = getpass.getpass('Password:')
@@ -150,19 +165,32 @@ def main():
         if not cscofunc.is_it_switch(net_connect):
             print("- device is probably not a switch")
             continue
+        if not cscofunc.is_vlan_configured(net_connect, vlan_new):      # check if new vlan is configured on the switch
+            print("- WARNING: Vlan", vlan_new, "is not configured on the switch")
+            vlan_new_not_configured = True
+        else:
+            vlan_new_not_configured = False
         int_list = cscofunc.get_intlist_vlan(net_connect, vlan_match)    # get interfaces list where is specific vlan configured
 
         if int_list:    # is at least one interface configured with "vlan_match" ?
             for interface in int_list:      # select trunk interfaces where "allowed vlans" command is configured
                 if cscofunc.is_int_admin_trunk(net_connect, interface) and cscofunc.is_int_allowed_vlan_configured(net_connect, interface): # is interface trunk with allowed Vlans configured?
-                    int_trunk_list.append(interface)
+                    int_trunk_list.append(interface)    # result is in int_trunk_list
 
 
             #print(int_list)
             #print(int_trunk_list)
-            for interface in int_trunk_list:
+            if int_trunk_list and vlan_new_not_configured:  #vlan is to be added to some trunks but not configured on the switch
+                if paction == 'p':  # process mode
+                    if cscofunc.configure_vlan(net_connect, vlan_new, vlan_new_name):
+                        print("- Vlan", vlan_new, "was configured on the switch")
+                    else:
+                        print("- WARNING: Vlan", vlan_new, "was NOT configured on the switch for some reason")
+                else:           # test mode
+                    print("- Vlan", vlan_new, "would have been configured on the switch")
+            for interface in int_trunk_list:    # go through all trunk interfaces where matched vlan is allowed
                 if cscofunc.is_vlan_in_allowed_list(net_connect, interface, vlan_new): # new vlan already configured on interface
-                    continue                                # continuw with processing of next interface
+                    continue                                # continue with processing of next interface
                 if paction == 't':    # test only
                     print("- interface", interface, "would have been changed (test mode)")
                     nr_iface_configured = nr_iface_configured + 1
@@ -177,7 +205,7 @@ def main():
                         print("- ERROR during device configuration: vlan", vlan_new, "was probably NOT added to allowed vlans on interface", interface)
         else:       # nothing to do on this device
             print("- no interface configured in Vlan", vlan_match)
-        # print results regarding device which has been processed/tested
+        # print summary results related to device which has been processed/tested
         if paction == 't':    # test only
             print("-", nr_iface_configured, "interface(s) would have been changed")
         if paction == 'p':    # test only
