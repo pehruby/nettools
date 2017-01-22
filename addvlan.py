@@ -9,6 +9,8 @@ from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException
 from paramiko.ssh_exception import SSHException
 
+
+
 def get_intlist_vlan(handler, vlan):
     ''' Returns list of all (both access andf trunks) interfaces where VLAN vlan is configured
 
