@@ -162,6 +162,23 @@ def process_cfg_file(fname):
     return iplist
 
 
+def add_vlan_to_int_trunk_allowed(handler, interface, vlan):
+    ''' Adds VLAN to allowed vlan on trunk interface
+    '''
+    cfg_cmds = ['interface '+ interface, 'switchport trunk allowed vlan add '+ vlan]
+    output = handler.send_config_set(cfg_cmds)
+    # print(output)
+    if ('^' in output) or ('%' in output):      # probably something wrong happened
+        return False
+    return True
+
+def is_vlan_in_allowed_list(handler, interface, vlan):
+    ''' Is VLAN in allowed vlan on trunk interface ?
+    '''
+    enabled_trunk_vlan_list = list_trunking_vlans_enabled(handler, interface) # list of Vlan configured as allowed on the interface
+    if vlan in enabled_trunk_vlan_list:
+        return True
+    return False
 
 # ============================ Main ==========================================
 
@@ -275,9 +292,9 @@ def main():
         if not is_it_switch(net_connect):
             print("- device is probably not a switch")
             continue
-        int_list = get_intlist_vlan(net_connect, vlan_match)    # get interfaces list where specific vlan configured
+        int_list = get_intlist_vlan(net_connect, vlan_match)    # get interfaces list where is specific vlan configured
 
-        if int_list:    # is any interface configured in vlan_match ?
+        if int_list:    # is at least one interface configured with "vlan_match" ?
             for interface in int_list:      # select trunk interfaces where "allowed vlans" command is configured
                 if is_int_admin_trunk(net_connect, interface) and is_int_allowed_vlan_configured(net_connect, interface): # is interface trunk with allowed Vlans configured?
                     int_trunk_list.append(interface)
@@ -286,16 +303,27 @@ def main():
             #print(int_list)
             #print(int_trunk_list)
             for interface in int_trunk_list:
-                enabled_trunk_vlan_list = list_trunking_vlans_enabled(net_connect, interface) # list of Vlan configured as allowed on the interface
-                if vlan_new in enabled_trunk_vlan_list:     # new vlan already configured on interface
+                if is_vlan_in_allowed_list(net_connect, interface, vlan_new): # new vlan already configured on interface
                     continue                                # continuw with processing of next interface
                 if paction == 't':    # test only
                     print("- interface", interface, "would have been changed (test mode)")
-                nr_iface_configured = nr_iface_configured + 1
-        else:
+                    nr_iface_configured = nr_iface_configured + 1
+                if paction == 'p':      # process mode
+                    if add_vlan_to_int_trunk_allowed(net_connect, interface, vlan_new):       # add vlan to allowd list
+                        if is_vlan_in_allowed_list(net_connect, interface, vlan_new):            # check if vlan was really added                            print("- interface", interface, "would have been changed (test mode)")
+                            print("- vlan", vlan_new, "was added to allowed vlans on interface", interface)
+                            nr_iface_configured = nr_iface_configured + 1
+                        else:
+                            print("- ERROR: for some reason vlan", vlan_new, "was NOT added to allowed vlans on interface", interface)
+                    else:
+                        print("- ERROR during device configuration: vlan", vlan_new, "was probably NOT added to allowed vlans on interface", interface)
+        else:       # nothing to do on this device
             print("- no interface configured in Vlan", vlan_match)
+        # print results regarding device which has been processed/tested
         if paction == 't':    # test only
             print("-", nr_iface_configured, "interface(s) would have been changed")
+        if paction == 'p':    # test only
+            print("-", nr_iface_configured, "interface(s) was changed")
 
         net_connect.disconnect()        # disconnect from the switch
 
