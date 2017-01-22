@@ -9,135 +9,16 @@ from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException
 from paramiko.ssh_exception import SSHException
 
-
-
-def get_intlist_vlan(handler, vlan):
-    ''' Returns list of all (both access andf trunks) interfaces where VLAN vlan is configured
-
-    '''
-    str_vlan = str(vlan)
-    cli_param = "sh vlan id " + str_vlan
-    cli_output = handler.send_command(cli_param)
-    cli_out_split = cli_output.split('\n')
-    for i in range(len(cli_out_split)-2):
-        if re.match(r"VLAN Name\s+Status\s+Ports", cli_out_split[i]):   #find line with column names
-            # print("Matched line in "sh vlan id" with interfaces configured in Vlan", vlan)
-            intstr = re.match("^"+str_vlan+r"\s+(.+?)\s+(.+?)\s+(.+)", cli_out_split[i+2]) # interfaces are on 2nd line after column names line
-            if intstr:
-                return intstr.group(3).split(",")       # list of interfaces
-            else:
-                print("Expected line with interface list for VLAN" + str_vlan + "was not found !!!")
-                return ""
-
-
-def is_int_admin_trunk(handler, iface):
-    ''' Is interface in administrative mode trunk ?
-
-    '''
-    cli_param = "sh int " + iface + " switchport"
-    cli_output = handler.send_command(cli_param)
-    if re.search(r"Administrative Mode: trunk", cli_output):
-        return True
-    return False
-
-def is_int_allowed_vlan_configured(handler, iface):
-    ''' Is command "trunk allowed vlan" configured ?
-
-    '''
-    cli_param = "sh run int " + iface
-    cli_output = handler.send_command(cli_param)
-    if re.search(r"switchport trunk allowed vlan", cli_output):
-        return True
-    return False
-
-def normalize_vlan_list(vlset):
-    ''' Returns list of VLAN numbers. In vlset changes VLAN ranges (i.e 2345-2348) into list of VLANs
-    contained in range (2345,2346,2347,2348)
-    '''
-
-    outset = list()      # empty list
-    for item in vlset:
-        intstr = re.match(r"([0-9]+)-([0-9]+)", item)   # matches for example 2345-2358
-        if intstr:
-            for subit in range(int(intstr.group(1)), int(intstr.group(2))+1): # +1 because last number is excluded from iteration
-                outset.append(str(subit))       # add number inside the range to output list
-        else:
-            outset.append(item)            # add number input set to output list
-    return outset
-
-
-def list_trunking_vlans_enabled(handler, iface):
-    ''' Returns list of trunking vlans enabled on specific interface
-
-    '''
-    cli_param = "sh int " + iface + " switchport"
-    cli_output = handler.send_command(cli_param)
-    intstr = re.search(r"Trunking VLANs Enabled:\s+([0-9\-,\n ]+)[A-Za-z]+", cli_output)
-    if not intstr:
-        intstr = re.search(r"Trunking VLANs Enabled:\s+(ALL)", cli_output)
-    if intstr:
-        tmps = intstr.group(1)
-        tmps = tmps.replace('ALL', '1-4096')
-        tmps = tmps.replace('\n', '')        # delete newlines
-        tmps = tmps.replace(' ', '')         # delete spaces
-        vlanlist = tmps.split(",")       # list VLANs
-        #print(vlanlist)
-        vlanlist = normalize_vlan_list(vlanlist)
-        # print("Normalized list: ", vlanlist)
-        return vlanlist
-    else:
-        print("Expected line with interface list for iface" + iface + "was not found !!!")
-        return ""
-
-def is_it_switch(handler):
-    ''' Check if the equipment is switch
-
-    '''
-    cli_param = "sh vlan"
-    cli_output = handler.send_command(cli_param)
-    intstr = re.search(r"1\s+default", cli_output)
-    if intstr:
-        return True
-    else:
-        return False
-
-def is_ip_valid(testedip):
-    ''' Test if string is valid IP address
-    '''
-    result = True
-    list_ip = testedip.split('.')
-
-    for i, octet in enumerate(list_ip):
-        try:
-            list_ip[i] = int(octet)
-        except ValueError:
-            # couldn't convert octet to an integer
-            sys.exit("\n\nInvalid IP address: %s\n" % testedip)
+import cscofunc
 
 
 
-    if len(list_ip) == 4:
-        prvni, druhy, treti, ctvrty = list_ip
-        if ((prvni >= 1) and (prvni <= 223)) and (prvni != 127) and ((prvni != 169) and (druhy != 254)):
-            for item in list_ip[1:]:
-                if (item < 0) or (item > 255):
-                    result = result and False
-        else:
-            result = False
-    else:
-        result = False
-
-    return result
 
 
-def is_valid_vlan_number(vnum):
-    ''' Check if vnum is valid VLAN number
-    '''
 
-    if isinstance(vnum, int):
-        if vnum > 0 and vnum < 4097:
-            return True
-    return False
+
+
+
 
 
 def process_cfg_file(fname):
@@ -158,29 +39,13 @@ def process_cfg_file(fname):
     iplist = loadedfile.split("\n")
     iplist = list(filter(None, iplist))         # delete empty lines
     for ips in iplist:
-        if not is_ip_valid(ips):
+        if not cscofunc.is_ip_valid(ips):
             print("Invalid IP address in config file:", ips)
             exit(1)
     return iplist
 
 
-def add_vlan_to_int_trunk_allowed(handler, interface, vlan):
-    ''' Adds VLAN to allowed vlan on trunk interface
-    '''
-    cfg_cmds = ['interface '+ interface, 'switchport trunk allowed vlan add '+ vlan]
-    output = handler.send_config_set(cfg_cmds)
-    # print(output)
-    if ('^' in output) or ('%' in output):      # probably something wrong happened
-        return False
-    return True
 
-def is_vlan_in_allowed_list(handler, interface, vlan):
-    ''' Is VLAN in allowed vlan on trunk interface ?
-    '''
-    enabled_trunk_vlan_list = list_trunking_vlans_enabled(handler, interface) # list of Vlan configured as allowed on the interface
-    if vlan in enabled_trunk_vlan_list:
-        return True
-    return False
 
 # ============================ Main ==========================================
 
@@ -252,7 +117,7 @@ def main():
     if ip_of_switch and config_file:
         print("Both IP address and config file are specified")
         sys.exit(2)
-    if ip_of_switch and (not is_ip_valid(ip_of_switch)):
+    if ip_of_switch and (not cscofunc.is_ip_valid(ip_of_switch)):
         print("Invalid IP address")
         sys.exit(2)
     if not vlan_match:
@@ -291,28 +156,28 @@ def main():
         except (EOFError, SSHException):
             print("- unable to connect to the device, error")
             continue
-        if not is_it_switch(net_connect):
+        if not cscofunc.is_it_switch(net_connect):
             print("- device is probably not a switch")
             continue
-        int_list = get_intlist_vlan(net_connect, vlan_match)    # get interfaces list where is specific vlan configured
+        int_list = cscofunc.get_intlist_vlan(net_connect, vlan_match)    # get interfaces list where is specific vlan configured
 
         if int_list:    # is at least one interface configured with "vlan_match" ?
             for interface in int_list:      # select trunk interfaces where "allowed vlans" command is configured
-                if is_int_admin_trunk(net_connect, interface) and is_int_allowed_vlan_configured(net_connect, interface): # is interface trunk with allowed Vlans configured?
+                if cscofunc.is_int_admin_trunk(net_connect, interface) and cscofunc.is_int_allowed_vlan_configured(net_connect, interface): # is interface trunk with allowed Vlans configured?
                     int_trunk_list.append(interface)
 
 
             #print(int_list)
             #print(int_trunk_list)
             for interface in int_trunk_list:
-                if is_vlan_in_allowed_list(net_connect, interface, vlan_new): # new vlan already configured on interface
+                if cscofunc.is_vlan_in_allowed_list(net_connect, interface, vlan_new): # new vlan already configured on interface
                     continue                                # continuw with processing of next interface
                 if paction == 't':    # test only
                     print("- interface", interface, "would have been changed (test mode)")
                     nr_iface_configured = nr_iface_configured + 1
                 if paction == 'p':      # process mode
-                    if add_vlan_to_int_trunk_allowed(net_connect, interface, vlan_new):       # add vlan to allowd list
-                        if is_vlan_in_allowed_list(net_connect, interface, vlan_new):            # check if vlan was really added                            print("- interface", interface, "would have been changed (test mode)")
+                    if cscofunc.add_vlan_to_int_trunk_allowed(net_connect, interface, vlan_new):       # add vlan to allowd list
+                        if cscofunc.is_vlan_in_allowed_list(net_connect, interface, vlan_new):            # check if vlan was really added                            print("- interface", interface, "would have been changed (test mode)")
                             print("- vlan", vlan_new, "was added to allowed vlans on interface", interface)
                             nr_iface_configured = nr_iface_configured + 1
                         else:
