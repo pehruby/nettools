@@ -12,15 +12,6 @@ from paramiko.ssh_exception import SSHException
 import cscofunc
 
 
-
-
-
-
-
-
-
-
-
 def process_cfg_file(fname):
     ''' Read IP addresses from cfg file
     '''
