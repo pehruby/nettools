@@ -7,6 +7,7 @@ import os
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException
 from paramiko.ssh_exception import SSHException
+from time import sleep
 
 import cscofunc
 
@@ -149,6 +150,7 @@ def main():
         print("Script is running in test mode. Devices configuration will not be affected")
     elif paction == 'p':
         print("Script is running in process mode. Devices Configuration WILL BE CHANGED !!!")
+        sleep(5)
 
     for switch in device_ip_list:           # go through all switches
         int_trunk_list = []
@@ -210,6 +212,10 @@ def main():
             print("-", nr_iface_configured, "interface(s) would have been changed")
         if paction == 'p':    # test only
             print("-", nr_iface_configured, "interface(s) was changed")
+
+        if write_conf:
+            cscofunc.write_running_to_startup(net_connect)
+            print("- configuration was written to startup config")
 
         net_connect.disconnect()        # disconnect from the switch
 

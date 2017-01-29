@@ -189,3 +189,11 @@ def configure_vlan(handler, vlan, vlan_name=''):
     if ('^' in output) or ('%' in output):      # probably something wrong happened
         return False
     return True
+
+def write_running_to_startup(handler):
+    ''' wr mem
+    '''
+    cli_param = "write mem"
+    cli_output = handler.send_command(cli_param)
+
+    return True
