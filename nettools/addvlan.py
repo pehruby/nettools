@@ -4,10 +4,11 @@ import sys
 import getpass
 import getopt
 import os
+from time import sleep
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException
 from paramiko.ssh_exception import SSHException
-from time import sleep
+
 
 import cscofunc
 
@@ -72,6 +73,7 @@ def main():
     pswd = ''
     paction = 't'       # test mode is default
     write_conf = False
+    config_was_changed = True       # configuration of the switch was changed
 
     argv = sys.argv[1:]
 
@@ -153,6 +155,7 @@ def main():
         sleep(5)
 
     for switch in device_ip_list:           # go through all switches
+        config_was_changed = False
         int_trunk_list = []
         nr_iface_configured = 0             # counter for number of interfaces affected on this switch
         print("\nProcessing device:", switch)
@@ -186,10 +189,11 @@ def main():
                 if paction == 'p':  # process mode
                     if cscofunc.configure_vlan(net_connect, vlan_new, vlan_new_name):
                         print("- Vlan", vlan_new, "was configured on the switch")
+                        config_was_changed = True
                     else:
                         print("- WARNING: Vlan", vlan_new, "was NOT configured on the switch for some reason")
                 else:           # test mode
-                    print("- Vlan", vlan_new, "would have been configured on the switch")
+                    print("- Vlan", vlan_new, "would have been configured on the switch (test mode)")
             for interface in int_trunk_list:    # go through all trunk interfaces where matched vlan is allowed
                 if cscofunc.is_vlan_in_allowed_list(net_connect, interface, vlan_new): # new vlan already configured on interface
                     continue                                # continue with processing of next interface
@@ -209,12 +213,14 @@ def main():
             print("- no interface configured in Vlan", vlan_match)
         # print summary results related to device which has been processed/tested
         if paction == 't':    # test only
-            print("-", nr_iface_configured, "interface(s) would have been changed")
-        if paction == 'p':    # test only
+            print("-", nr_iface_configured, "interface(s) would have been changed (test mode)")
+        if paction == 'p':    # process mode
             print("-", nr_iface_configured, "interface(s) was changed")
+            if nr_iface_configured > 0:
+                config_was_changed = True
 
-        if write_conf:
-            cscofunc.write_running_to_startup(net_connect)
+        if write_conf and config_was_changed:
+            cscofunc.write_running_to_startup(net_connect)              # write mem
             print("- configuration was written to startup config")
 
         net_connect.disconnect()        # disconnect from the switch
