@@ -46,7 +46,7 @@ def main():
     '''
 
     usage_str = '''
-    Usage: addvlan.py [OPTIONS]
+    Usage: addvlantr.py [OPTIONS]
     -v,     --verbose                   verbose
     -h,     --help                      display help
     -w,     --writeconf                 write device configuration after config change (wr m)
