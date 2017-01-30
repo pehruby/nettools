@@ -1,2 +1,2 @@
-# nettols
+# nettools
 Network devices configuration scripts
