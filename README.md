@@ -5,7 +5,7 @@ Network devices configuration scripts
 Adds specified vlan to trunks allowed vlan list if other vlan is already presented
 
 ### ciscofunc.py
-Module of functions for Cisco devices configuration changes
+Module of functions which read/change Cisco devices configuration
 
 
 
