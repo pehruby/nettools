@@ -265,3 +265,80 @@ def print_vlan_cfg(handler, vlannrlist):
                 print(line)
 
 
+def get_sh_int_switchport_special(handler):
+    '''
+    Returns list of switchport interfaces with parameters
+    Switch must support 'sh int switchport brief' command ... :(
+    '''
+    sp_list = []
+    cli_param = "sh interface switchport brief"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')
+    for line in cli_out_split:
+        #  Gi1/2/5     connected   trunk    802.1q   Po10        75,710,713-716
+        intstr = re.match(r"\s+([a-zA-Z0-9/.]+)\s+([a-z]+)\s+([a-z]+)\s+([a-z0-9/.]+)\s+([A-Za-z0-9\-]+).+$", line)
+        if intstr:
+            sp_list.append({'int':intstr.group(1), 'status':intstr.group(2), 'oper_mode':intstr.group(3), 'oper_encap':intstr.group(4), 'channel_id':intstr.group(5)})
+    return sp_list
+
+
+def get_sh_int_switchport(handler):
+    '''
+    Returns list of switchport interfaces with parameters. One item of list is directory.
+    '''
+    sp_list = []
+    cli_param = "sh interface switchport"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('Name: ')      # split output into blocks of interfaces
+    for block in cli_out_split:
+        intstr = re.search(r"([A-Za-z0-9/.]+)\n", block)
+        if intstr:                                  # interface name was found, process the interface
+            name = intstr.group(1)
+            int_dict = {}
+            int_dict['int'] = name
+            int_dict['switchport'] = find_regex_value_in_string(block, re.compile(r"Switchport:\s([A-Za-z]+)\n"))
+            int_dict['admin_mode'] = find_regex_value_in_string(block, re.compile(r"Administrative Mode:\s([A-Za-z\s]+)\n"))
+            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)\n"))
+            int_dict['admin_trunc_enc'] = find_regex_value_in_string(block, re.compile(r"Administrative Trunking Encapsulation:\s([A-Za-z0-9\.]+)\n"))
+            int_dict['trunk_negot'] = find_regex_value_in_string(block, re.compile(r"Negotiation of Trunking:\s([A-Za-z0-9\.]+)\n"))
+            int_dict['access_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Access Mode VLAN:\s([0-9]+).+\n"))
+            int_dict['trunk_native_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Trunking Native Mode VLAN:\s([0-9]+).+\n"))
+            int_dict['admin_native_vlan_tagging'] = find_regex_value_in_string(block, re.compile(r"Administrative Native VLAN tagging:\s([A-Za-z0-9\.]+)\n"))
+            int_dict['voice_vlan'] = find_regex_value_in_string(block, re.compile(r"Voice VLAN:\s([A-Za-z0-9]+)\n"))
+            tmps = find_regex_value_in_string(block, re.compile(r"Trunking VLANs Enabled:\s([A-Za-z0-9,\-\s]+)\n"))
+            vlanlist = process_raw_vlan_list(tmps)          # remove spaces, newlines
+            vlanlist = normalize_vlan_list(vlanlist)        # convert vlan ranges (i.e.5-300, ...) to list
+            int_dict['trunk_vlans'] = vlanlist
+            sp_list.append(int_dict)
+
+    return sp_list
+
+def process_raw_vlan_list(rawlist):
+    ''' Process raw list of trunk vlan numbers obtained from show command, i.e. removes spaces, newlines,...
+    '''
+    rawlist = rawlist.replace('ALL', '1-4096')
+    rawlist = rawlist.replace('\n', '')        # delete newlines
+    rawlist = rawlist.replace(' ', '')         # delete spaces
+    vlanlist = rawlist.split(",")       # list VLANs
+    return vlanlist
+
+def find_regex_value_in_string(sstring,regexp):
+    '''
+    Searches for regexp group(1) inside sstring
+    '''
+    intstr = re.search(regexp, sstring)
+    if intstr:
+        value = intstr.group(1)
+    else:
+        value = ''
+    return value
+
+
+def conv_int_to_interface_name(intname):
+    '''
+    Converts interface shortname to standartd name, i.e Gi1/1/1 to GigabitEthernet1/1/1
+    '''
+    intname.replace('Gi','GigabitEthernet')
+    intname.replace('Te','TenGigabitEthernet')
+    intname.replace('Po','Port-channel')
+    
