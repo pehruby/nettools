@@ -73,12 +73,7 @@ def list_trunking_vlans_enabled(handler, iface):
     if not intstr:
         intstr = re.search(r"Trunking VLANs Enabled:\s+(ALL)", cli_output)
     if intstr:
-        tmps = intstr.group(1)
-        tmps = tmps.replace('ALL', '1-4096')
-        tmps = tmps.replace('\n', '')        # delete newlines
-        tmps = tmps.replace(' ', '')         # delete spaces
-        vlanlist = tmps.split(",")       # list VLANs
-        #print(vlanlist)
+        vlanlist = process_raw_vlan_list(intstr.group(1))
         vlanlist = normalize_vlan_list(vlanlist)
         # print("Normalized list: ", vlanlist)
         return vlanlist
@@ -338,7 +333,7 @@ def conv_int_to_interface_name(intname):
     '''
     Converts interface shortname to standartd name, i.e Gi1/1/1 to GigabitEthernet1/1/1
     '''
-    intname.replace('Gi','GigabitEthernet')
-    intname.replace('Te','TenGigabitEthernet')
-    intname.replace('Po','Port-channel')
-    
+    intname.replace('Gi', 'GigabitEthernet')
+    intname.replace('Te', 'TenGigabitEthernet')
+    intname.replace('Po', 'Port-channel')
+    return intname
