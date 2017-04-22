@@ -109,7 +109,9 @@ def is_ip_valid(testedip):
             list_ip[i] = int(octet)
         except ValueError:
             # couldn't convert octet to an integer
-            sys.exit("\n\nInvalid IP address: %s\n" % testedip)
+            result = False
+            return result
+            # sys.exit("\n\nInvalid IP address: %s\n" % testedip)
 
 
 
@@ -197,3 +199,69 @@ def write_running_to_startup(handler):
     cli_output = handler.send_command(cli_param)
 
     return True
+
+def get_mac_address_table(handler):
+    ''' Returns mac address table
+    Table is dict with Vlan number as key and value is list of (mac,int) items
+    '''
+    mactable = {}       # dict of vlans
+    cli_param = "sh mac address-table"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')
+    for line in cli_out_split:
+        intstr = re.match(r"[*]?\s+([0-9]+)\s+([0-9a-f.]+)\s+dynamic\s+Yes\s+[0-9]+\s+(.*)$", line)
+        if intstr:
+            vlan = intstr.group(1)
+            if vlan not in mactable.keys():
+                mactable[vlan] = []
+            mactable[vlan].append({'mac':intstr.group(2),'int':intstr.group(3)})
+    return mactable
+
+def get_vlan_list_trunk(macadrtab, trunk):
+    '''
+    Returns list of VLANs which are visible on trunk based on mac address table list
+    '''
+    vlanlist = []
+    for vlan in macadrtab.keys():
+        for item in macadrtab[vlan]:
+            if item['int'] == trunk:
+                vlanlist.append(vlan)
+                break
+    return vlanlist
+
+
+def get_ip_int_list(handler):
+    ''' Returns directory of L3 interfaces with valid IP address configured like this:
+    {'Vlan904': {'status': 'up', 'protocol': 'up', 'ip': '192.168.100.33'},'Vlan555': {'status': 'up', 'protocol': 'up', 'ip': '10.76.77.254'}}
+
+    '''
+    ip_l3_table = {}
+    cli_param = "sh ip interface brief"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')
+    for line in cli_out_split:
+        intstr = re.match(r"([a-zA-Z0-9/.]+)\s+([0-9a-z.]+)\s+(YES|NO)\s+(NVRAM|unset)\s+(([a-z]+(\sdown)?))\s+([a-z]+)\s+$", line)
+        if intstr:
+            if is_ip_valid(intstr.group(2)):
+                ip_l3_table[intstr.group(1)] = {'ip':intstr.group(2),'status':intstr.group(6),'protocol':intstr.group(8)}
+    return ip_l3_table
+
+def print_vlan_cfg(handler, vlannrlist):
+    '''
+    Lists Vlans config
+    '''
+    for vlan in vlannrlist:
+        exclreach = False
+        cli_param = "sh run vlan " + vlan
+        cli_output = handler.send_command(cli_param)
+        cli_out_split = cli_output.split('\n')
+        for line in cli_out_split:
+            if line == '!':
+                exclreach = True
+                continue
+            if line == 'end':
+                continue
+            if exclreach:
+                print(line)
+
+
