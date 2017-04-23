@@ -250,7 +250,7 @@ def get_ip_int_list(handler):
         intstr = re.match(r"([a-zA-Z0-9/.]+)\s+([0-9a-z.]+)\s+(YES|NO)\s+(NVRAM|unset)\s+(([a-z]+(\sdown)?))\s+([a-z]+)\s+$", line)
         if intstr:
             if is_ip_valid(intstr.group(2)):
-                ip_l3_table[intstr.group(1)] = {'ip':intstr.group(2),'status':intstr.group(6),'protocol':intstr.group(8)}
+                ip_l3_table[intstr.group(1)] = {'ip':intstr.group(2), 'status':intstr.group(6), 'protocol':intstr.group(8)}
     return ip_l3_table
 
 def print_vlan_cfg(handler, vlannrlist):
@@ -319,7 +319,7 @@ def process_raw_vlan_list(rawlist):
     vlanlist = rawlist.split(",")       # list VLANs
     return vlanlist
 
-def find_regex_value_in_string(sstring,regexp):
+def find_regex_value_in_string(sstring, regexp):
     '''
     Searches for regexp group(1) inside sstring
     '''
@@ -365,3 +365,45 @@ def get_sh_cdp_neighbor(handler):
             int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
             cdp_list.append(int_dict)
     return cdp_list
+
+def get_sh_vlan(handler):
+    '''
+    Returns VLAN table.
+    Quite long processing when lot of Vlans ...
+    '''
+    vlan_list = []
+    cli_param = "sh vlan"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    for line in cli_out_split:
+        intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-]+)\s+([a-z]+)(\s+(.*))?$", line)
+        if intstr:
+            acc_vlan = intstr.group(5)
+            if acc_vlan:
+                acc_vlan = acc_vlan.replace(' ', '')         # delete spaces
+                intlist = acc_vlan.split(",")       # list VLANs
+            else:
+                intlist = []
+            intlist2 = get_sh_vlan_id_int_list(handler, intstr.group(1))
+            vlan_entry = {'number':intstr.group(1), 'name':intstr.group(2), 'status':intstr.group(3), 'acc_int':intlist, 'ports':intlist2}
+            vlan_list.append(vlan_entry)
+    return vlan_list
+
+def get_sh_vlan_id_int_list(handler, vlannr):
+    '''
+    Returns list of interfaces displayed in sh vlan id 'vlannr'.
+    '''
+    cli_param = "sh vlan id " + vlannr
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    for line in cli_out_split:
+        intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-]+)\s+([a-z]+)(\s+(.*))?$", line)
+        if intstr:
+            intf = intstr.group(5)
+            if intf:
+                intf = intf.replace(' ', '')         # delete spaces
+                intlist = intf.split(",")       # interfaces list
+            else:
+                intlist = []
+            return intlist          # return after first match
+
