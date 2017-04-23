@@ -195,8 +195,8 @@ def write_running_to_startup(handler):
 
     return True
 
-def get_mac_address_table(handler):
-    ''' Returns mac address table
+def get_dyn_mac_address_table(handler):
+    ''' Returns dynamic entries of mac address table
     Table is dict with Vlan number as key and value is list of (mac,int) items
     '''
     mactable = {}       # dict of vlans
@@ -204,12 +204,23 @@ def get_mac_address_table(handler):
     cli_output = handler.send_command(cli_param)
     cli_out_split = cli_output.split('\n')
     for line in cli_out_split:
+        match = False
+        # *  713  6480.9998.fc6a   dynamic  Yes        215   Te1/6/16
         intstr = re.match(r"[*]?\s+([0-9]+)\s+([0-9a-f.]+)\s+dynamic\s+Yes\s+[0-9]+\s+(.*)$", line)
         if intstr:
+            match = True
+        else:
+            # 172    0050.5682.003c    DYNAMIC     Gi2/1/4
+            intstr = re.match(r"\s?([0-9]+)\s+([0-9a-f.]+)\s+DYNAMIC\s+(.*)$", line)
+            if intstr:
+                match = True
+        if match:
             vlan = intstr.group(1)
             if vlan not in mactable.keys():
                 mactable[vlan] = []
-            mactable[vlan].append({'mac':intstr.group(2),'int':intstr.group(3)})
+            mactable[vlan].append({'mac':intstr.group(2), 'int':intstr.group(3)})
+
+
     return mactable
 
 def get_vlan_list_trunk(macadrtab, trunk):
@@ -260,21 +271,6 @@ def print_vlan_cfg(handler, vlannrlist):
                 print(line)
 
 
-def get_sh_int_switchport_special(handler):
-    '''
-    Returns list of switchport interfaces with parameters
-    Switch must support 'sh int switchport brief' command ... :(
-    '''
-    sp_list = []
-    cli_param = "sh interface switchport brief"
-    cli_output = handler.send_command(cli_param)
-    cli_out_split = cli_output.split('\n')
-    for line in cli_out_split:
-        #  Gi1/2/5     connected   trunk    802.1q   Po10        75,710,713-716
-        intstr = re.match(r"\s+([a-zA-Z0-9/.]+)\s+([a-z]+)\s+([a-z]+)\s+([a-z0-9/.]+)\s+([A-Za-z0-9\-]+).+$", line)
-        if intstr:
-            sp_list.append({'int':intstr.group(1), 'status':intstr.group(2), 'oper_mode':intstr.group(3), 'oper_encap':intstr.group(4), 'channel_id':intstr.group(5)})
-    return sp_list
 
 
 def get_sh_int_switchport(handler):
@@ -293,13 +289,14 @@ def get_sh_int_switchport(handler):
             int_dict['int'] = name
             int_dict['switchport'] = find_regex_value_in_string(block, re.compile(r"Switchport:\s([A-Za-z]+)\n"))
             int_dict['admin_mode'] = find_regex_value_in_string(block, re.compile(r"Administrative Mode:\s([A-Za-z\s]+)\n"))
-            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)\n"))
+            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)"))
             int_dict['admin_trunc_enc'] = find_regex_value_in_string(block, re.compile(r"Administrative Trunking Encapsulation:\s([A-Za-z0-9\.]+)\n"))
             int_dict['trunk_negot'] = find_regex_value_in_string(block, re.compile(r"Negotiation of Trunking:\s([A-Za-z0-9\.]+)\n"))
             int_dict['access_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Access Mode VLAN:\s([0-9]+).+\n"))
             int_dict['trunk_native_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Trunking Native Mode VLAN:\s([0-9]+).+\n"))
             int_dict['admin_native_vlan_tagging'] = find_regex_value_in_string(block, re.compile(r"Administrative Native VLAN tagging:\s([A-Za-z0-9\.]+)\n"))
             int_dict['voice_vlan'] = find_regex_value_in_string(block, re.compile(r"Voice VLAN:\s([A-Za-z0-9]+)\n"))
+            int_dict['bundle_member'] = find_regex_value_in_string(block, re.compile(r"member of bundle\s(Po[0-9]+)\)"))
             tmps = find_regex_value_in_string(block, re.compile(r"Trunking VLANs Enabled:\s([A-Za-z0-9,\-\s]+)\n"))
             vlanlist = process_raw_vlan_list(tmps)          # remove spaces, newlines
             vlanlist = normalize_vlan_list(vlanlist)        # convert vlan ranges (i.e.5-300, ...) to list
