@@ -226,6 +226,7 @@ def get_dyn_mac_address_table(handler):
 def get_vlan_list_trunk(macadrtab, trunk):
     '''
     Returns list of VLANs which are visible on trunk based on mac address table list
+    variable trunks is interface name
     '''
     vlanlist = []
     for vlan in macadrtab.keys():
@@ -299,7 +300,7 @@ def get_sh_int_switchport(handler):
             int_dict['bundle_member'] = find_regex_value_in_string(block, re.compile(r"member of bundle\s(Po[0-9]+)\)"))
             tmps = find_regex_value_in_string(block, re.compile(r"Trunking VLANs Enabled:\s([A-Za-z0-9,\-\s]+)\n"))
             vlanlist = process_raw_vlan_list(tmps)          # remove spaces, newlines
-            vlanlist = normalize_vlan_list(vlanlist)        # convert vlan ranges (i.e.5-300, ...) to list
+            vlanlist = normalize_vlan_list(vlanlist)        # convert vlan ranges (i.e.5-8, ...) to list (5,6,7,8)
             int_dict['trunk_vlans'] = vlanlist
             sp_list.append(int_dict)
 
@@ -307,6 +308,10 @@ def get_sh_int_switchport(handler):
 
 def process_raw_vlan_list(rawlist):
     ''' Process raw list of trunk vlan numbers obtained from show command, i.e. removes spaces, newlines,...
+     4,10,11,75,135,172,302,303,306,311,330,555-560,704,706,
+     708,710,712-717,750,751,755-770,772-778,781-785,788-790,792,794,796,797,
+     830-833,840-843,848-854,859-863,869-878,880-885,890-904,910-914,970-979,
+
     '''
     rawlist = rawlist.replace('ALL', '1-4096')
     rawlist = rawlist.replace('\n', '')        # delete newlines
@@ -334,3 +339,29 @@ def conv_int_to_interface_name(intname):
     intname.replace('Te', 'TenGigabitEthernet')
     intname.replace('Po', 'Port-channel')
     return intname
+
+def get_sh_cdp_neighbor(handler):
+    '''
+    Returns CDP table.
+    '''
+    cdp_list = []
+    cli_param = "sh cdp entry *"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('----------------')      # split output into blocks (list) of devices
+    for block in cli_out_split:
+        intstr = re.search(r"Device ID:\s+([A-Za-z0-9/._\-]+)\n", block)         # ?what characters can be in device name?
+        if intstr:                                  # device name was found, process the device entry
+            name = intstr.group(1)
+            int_dict = {}
+            int_dict['device_id'] = name
+            int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"Entry address\(es\):\s+\n\s+IP address:\s+([0-9\.]+)\n"))
+            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[A-Za-z]{0,20}\s?([A-Za-z0-9\.\-]+),")) # cisco WS-6506-E -> WS-6506-E
+            cap_raw = find_regex_value_in_string(block, re.compile(r"Capabilities:\s+([A-Za-z0-9\s]+)\n"))
+            cap_raw = cap_raw.rstrip(' ')           # remove trailing space
+            int_dict['capability'] = cap_raw.split(' ')         # split capabilities int list
+            int_dict['intf_id'] = find_regex_value_in_string(block, re.compile(r"Interface:\s+([A-Za-z0-9\./]+),"))
+            int_dict['port_id'] = find_regex_value_in_string(block, re.compile(r" Port ID \(outgoing port\):\s+([A-Za-z0-9\./]+)\n"))
+            int_dict['software'] = find_regex_value_in_string(block, re.compile(r"\(([A-Za-z0-9\-_]+)\),\s+Version"))
+            int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+            cdp_list.append(int_dict)
+    return cdp_list
