@@ -274,7 +274,7 @@ def print_vlan_cfg(handler, vlannrlist):
 
 
 
-def get_sh_int_switchport(handler):
+def get_cli_sh_int_switchport(handler):
     '''
     Returns list of switchport interfaces with parameters. One item of list is directory.
     '''
@@ -290,7 +290,7 @@ def get_sh_int_switchport(handler):
             int_dict['int'] = name
             int_dict['switchport'] = find_regex_value_in_string(block, re.compile(r"Switchport:\s([A-Za-z]+)\n"))
             int_dict['admin_mode'] = find_regex_value_in_string(block, re.compile(r"Administrative Mode:\s([A-Za-z\s]+)\n"))
-            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)"))
+            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)\n"))
             int_dict['admin_trunc_enc'] = find_regex_value_in_string(block, re.compile(r"Administrative Trunking Encapsulation:\s([A-Za-z0-9\.]+)\n"))
             int_dict['trunk_negot'] = find_regex_value_in_string(block, re.compile(r"Negotiation of Trunking:\s([A-Za-z0-9\.]+)\n"))
             int_dict['access_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Access Mode VLAN:\s([0-9]+).+\n"))
@@ -340,7 +340,7 @@ def conv_int_to_interface_name(intname):
     intname.replace('Po', 'Port-channel')
     return intname
 
-def get_sh_cdp_neighbor(handler):
+def get_cli_sh_cdp_neighbor(handler):
     '''
     Returns CDP table.
     '''
@@ -355,20 +355,25 @@ def get_sh_cdp_neighbor(handler):
             int_dict = {}
             int_dict['device_id'] = name
             int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"Entry address\(es\):\s+\n\s+IP address:\s+([0-9\.]+)\n"))
-            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[A-Za-z]{0,20}\s?([A-Za-z0-9\.\-]+),")) # cisco WS-6506-E -> WS-6506-E
-            cap_raw = find_regex_value_in_string(block, re.compile(r"Capabilities:\s+([A-Za-z0-9\s]+)\n"))
+            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[A-Za-z]{0,20}\s?([A-Za-z0-9\.\-\s]+),")) # cisco WS-6506-E -> WS-6506-E
+            cap_raw = find_regex_value_in_string(block, re.compile(r"Capabilities:\s+([A-Za-z0-9\-\s]+)\n"))
             cap_raw = cap_raw.rstrip(' ')           # remove trailing space
             int_dict['capability'] = cap_raw.split(' ')         # split capabilities int list
             int_dict['intf_id'] = find_regex_value_in_string(block, re.compile(r"Interface:\s+([A-Za-z0-9\./]+),"))
-            int_dict['port_id'] = find_regex_value_in_string(block, re.compile(r" Port ID \(outgoing port\):\s+([A-Za-z0-9\./]+)\n"))
+            int_dict['port_id'] = find_regex_value_in_string(block, re.compile(r" Port ID \(outgoing port\):\s+([A-Za-z0-9\./\s]+)\n"))
             int_dict['software'] = find_regex_value_in_string(block, re.compile(r"\(([A-Za-z0-9\-_]+)\),\s+Version"))
-            int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+            if 'Phone' in int_dict['capability']:
+                int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+:\n([A-Za-z0-9\.\-]+)\n"))
+            else:
+                int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
             cdp_list.append(int_dict)
     return cdp_list
 
-def get_sh_vlan(handler):
+def get_cli_sh_vlan(handler):
     '''
     Returns VLAN table.
+    ports - ports vhere vlan is active (column Ports in sh vlan id)
+    acc_int - ports where vlan is in access mode (column Ports in sh vlan)
     Quite long processing when lot of Vlans ...
     '''
     vlan_list = []
@@ -384,12 +389,12 @@ def get_sh_vlan(handler):
                 intlist = acc_vlan.split(",")       # list VLANs
             else:
                 intlist = []
-            intlist2 = get_sh_vlan_id_int_list(handler, intstr.group(1))
+            intlist2 = get_cli_sh_vlan_id_int_list(handler, intstr.group(1))
             vlan_entry = {'number':intstr.group(1), 'name':intstr.group(2), 'status':intstr.group(3), 'acc_int':intlist, 'ports':intlist2}
             vlan_list.append(vlan_entry)
     return vlan_list
 
-def get_sh_vlan_id_int_list(handler, vlannr):
+def get_cli_sh_vlan_id_int_list(handler, vlannr):
     '''
     Returns list of interfaces displayed in sh vlan id 'vlannr'.
     '''
