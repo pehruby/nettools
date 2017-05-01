@@ -195,7 +195,7 @@ def write_running_to_startup(handler):
 
     return True
 
-def get_dyn_mac_address_table(handler):
+def get_cli_sh_mac_address_table_dyn_dict(handler):
     ''' Returns dynamic entries of mac address table
     Table is dict with Vlan number as key and value is list of (mac,int) items
     '''
@@ -214,6 +214,13 @@ def get_dyn_mac_address_table(handler):
             intstr = re.match(r"\s?([0-9]+)\s+([0-9a-f.]+)\s+DYNAMIC\s+(.*)$", line)
             if intstr:
                 match = True
+            else:
+                # IOS-XE
+                # 503      001e.be4c.8180   dynamic ip,ipx,assigned,other TenGigabitEthernet1/1
+                intstr = re.match(r"\s?([0-9]+)\s+([0-9a-f.]+)\s+dynamic\s+[A-Za-z,]+\s+([A-Za-z0-9/\-\.]+)", line)
+                if intstr:
+                    match = True
+
         if match:
             vlan = intstr.group(1)
             if vlan not in mactable.keys():
@@ -223,6 +230,45 @@ def get_dyn_mac_address_table(handler):
 
     return mactable
 
+def get_cli_sh_mac_address_table(handler):
+    '''
+    Returns list of show mac-address-table entries
+    dynamic a static entries only, no multicast
+    Each entry is dict which contains vlan, mac, type, int
+    '''
+    
+    mac_tab = []
+    cli_param = "sh mac address-table"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')
+    for line in cli_out_split:
+        match = False
+        # *  713  6480.9998.fc6a   dynamic  Yes        215   Te1/6/16
+        intstr = re.match(r"[*]?\s+([0-9]+)\s+([0-9a-f.]+)\s+(dynamic|static)\s+[A-Za-z]+\s+[0-9\-]+\s+([A-Za-z0-9/\-\.]+)", line)
+        if intstr:
+            match = True
+        else:
+            # 172    0050.5682.003c    DYNAMIC     Gi2/1/4
+            # All    0180.c200.0004    STATIC      CPU
+            intstr = re.match(r"\s?([0-9A-Za-z]+)\s+([0-9a-f.]+)\s+(DYNAMIC|STATIC)\s+([A-Za-z0-9/\-\.]+)", line)
+            if intstr:
+                match = True
+            else:
+                # IOS-XE
+                # 503      001e.be4c.8180   dynamic ip,ipx,assigned,other TenGigabitEthernet1/1
+                intstr = re.match(r"\s?([0-9]+)\s+([0-9a-f.]+)\s+(dynamic|static)\s+[A-Za-z,]+\s+([A-Za-z0-9/\-\.]+)", line)
+                if intstr:
+                    match = True
+
+        if match:
+            int_dict = {}
+            int_dict['vlan'] = intstr.group(1)
+            int_dict['mac'] = intstr.group(2)
+            int_dict['type'] = intstr.group(3)
+            int_dict['int'] = intstr.group(4)
+            mac_tab.append(int_dict)
+    return mac_tab
+            
 def get_vlan_list_trunk(macadrtab, trunk):
     '''
     Returns list of VLANs which are visible on trunk based on mac address table list
@@ -237,8 +283,8 @@ def get_vlan_list_trunk(macadrtab, trunk):
     return vlanlist
 
 
-def get_ip_int_list(handler):
-    ''' Returns directory of L3 interfaces with valid IP address configured like this:
+def get_cli_ip_int_br_dict(handler):
+    ''' Returns dictionary of L3 interfaces with valid IP address configured like this:
     {'Vlan904': {'status': 'up', 'protocol': 'up', 'ip': '192.168.100.33'},'Vlan555': {'status': 'up', 'protocol': 'up', 'ip': '10.76.77.254'}}
 
     '''
@@ -247,11 +293,32 @@ def get_ip_int_list(handler):
     cli_output = handler.send_command(cli_param)
     cli_out_split = cli_output.split('\n')
     for line in cli_out_split:
-        intstr = re.match(r"([a-zA-Z0-9/.]+)\s+([0-9a-z.]+)\s+(YES|NO)\s+(NVRAM|unset)\s+(([a-z]+(\sdown)?))\s+([a-z]+)\s+$", line)
+        intstr = re.match(r"([a-zA-Z0-9/.\-]+)\s+([0-9a-z.]+)\s+(YES|NO)\s+([A-Za-z]+)\s+(([a-z]+(\sdown)?))\s+([a-z]+)\s+$", line)
         if intstr:
             if is_ip_valid(intstr.group(2)):
                 ip_l3_table[intstr.group(1)] = {'ip':intstr.group(2), 'status':intstr.group(6), 'protocol':intstr.group(8)}
     return ip_l3_table
+
+def get_cli_sh_ip_int_brie(handler):
+    '''
+    Returns list of dict entries from sh ip int brie
+    '''
+    sh_ip_int_list = []
+    cli_param = "sh ip interface brief"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')
+    for line in cli_out_split:
+        intstr = re.match(r"([a-zA-Z0-9/.\-]+)\s+([0-9a-z.]+)\s+(YES|NO)\s+([A-Za-z]+)\s+(([a-z]+(\sdown)?))\s+([a-z]+)\s+$", line)
+        if intstr:
+            int_dict = {}
+            int_dict['interface'] = intstr.group(1)
+            int_dict['ip'] = intstr.group(2)
+            int_dict['status'] = intstr.group(6)
+            int_dict['protocol'] = intstr.group(8)
+            sh_ip_int_list.append(int_dict)
+    return sh_ip_int_list
+
+
 
 def print_vlan_cfg(handler, vlannrlist):
     '''
