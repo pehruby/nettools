@@ -6,6 +6,14 @@
 
 import sys
 import re
+import requests
+import json
+
+
+requests.packages.urllib3.disable_warnings()
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 
 def get_intlist_vlan(handler, vlan):
     ''' Returns list of all (both access andf trunks) interfaces where VLAN 'vlan' is configured
@@ -479,3 +487,27 @@ def get_cli_sh_vlan_id_int_list(handler, vlannr):
                 intlist = []
             return intlist          # return after first match
 
+
+def nxapi_post_cli_show(ip, port, username, password, cmd, secure = True):
+    '''
+    Performs NXAPI cli_show JSON POST call
+    '''
+    if secure:
+        proto = "https"
+    else:
+        proto = "http"
+
+    my_headers = {'content-type': 'application/json'}
+    url = proto+"://"+ip+":"+str(port)+"/ins"
+
+
+    payload = {'ins_api': {'chunk': '0', 'version': '1.2', 'sid': '1', 'input': cmd, 'type': 'cli_show', 'output_format': 'json'}}
+
+    try:
+        response = requests.post(url, data=json.dumps(payload), headers=my_headers, auth=(username, password), verify=False)
+    except (requests.ConnectionError, requests.ConnectTimeout):
+        except_response = {'input': cmd, 'msgs' : 'Connection Error', 'code' : '500'}
+        return except_response
+    
+    response_json = response.json()
+    return response_json['ins_api']['outputs']['output']
