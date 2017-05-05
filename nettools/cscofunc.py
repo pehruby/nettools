@@ -488,9 +488,13 @@ def get_cli_sh_vlan_id_int_list(handler, vlannr):
             return intlist          # return after first match
 
 
-def nxapi_post_cli_show(ip, port, username, password, cmd, secure = True):
+def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     '''
     Performs NXAPI cli_show JSON POST call
+    cmd is string of commands separated by ;
+        example: 'vlan 333 ;name ThreeThreeThree'
+        it looks like there must be space before ;
+    cmdtype can be cli_show, cli_conf
     '''
     if secure:
         proto = "https"
@@ -501,7 +505,7 @@ def nxapi_post_cli_show(ip, port, username, password, cmd, secure = True):
     url = proto+"://"+ip+":"+str(port)+"/ins"
 
 
-    payload = {'ins_api': {'chunk': '0', 'version': '1.2', 'sid': '1', 'input': cmd, 'type': 'cli_show', 'output_format': 'json'}}
+    payload = {'ins_api': {'chunk': '0', 'version': '1.2', 'sid': '1', 'input': cmd, 'type': cmdtype, 'output_format': 'json'}}
 
     try:
         response = requests.post(url, data=json.dumps(payload), headers=my_headers, auth=(username, password), verify=False)
