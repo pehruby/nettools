@@ -382,7 +382,7 @@ def get_cli_sh_int_switchport(handler):
     return sp_list
 
 def process_raw_vlan_list(rawlist):
-    ''' Process raw list of trunk vlan numbers obtained from show command, i.e. removes spaces, newlines,...
+    ''' Process raw list of trunk vlan numbers obtained from show command, i.e. removes spaces, newlines, commas ...
      4,10,11,75,135,172,302,303,306,311,330,555-560,704,706,
      708,710,712-717,750,751,755-770,772-778,781-785,788-790,792,794,796,797,
      830-833,840-843,848-854,859-863,869-878,880-885,890-904,910-914,970-979,
@@ -444,10 +444,10 @@ def get_cli_sh_cdp_neighbor(handler):
             cdp_list.append(int_dict)
     return cdp_list
 
-def get_cli_sh_vlan(handler):
+def get_cli_sh_vlan_plus(handler):
     '''
     Returns VLAN table.
-    ports - ports vhere vlan is active (column Ports in sh vlan id)
+    ports - ports where vlan is active (column Ports in sh vlan id)
     acc_int - ports where vlan is in access mode (column Ports in sh vlan)
     Quite long processing when lot of Vlans ...
     '''
@@ -456,6 +456,7 @@ def get_cli_sh_vlan(handler):
     cli_output = handler.send_command(cli_param)
     cli_out_split = cli_output.split('\n')      # split output into lines
     for line in cli_out_split:
+        # 10   vlan10                           active    Eth2/3, Eth2/4, Eth2/5
         intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-]+)\s+([a-z]+)(\s+(.*))?$", line)
         if intstr:
             acc_vlan = intstr.group(5)
@@ -464,7 +465,7 @@ def get_cli_sh_vlan(handler):
                 intlist = acc_vlan.split(",")       # list VLANs
             else:
                 intlist = []
-            intlist2 = get_cli_sh_vlan_id_int_list(handler, intstr.group(1))
+            intlist2 = get_cli_sh_vlan_id_int_list(handler, intstr.group(1))    # obtain list of interfaces where VLAN is active
             vlan_entry = {'number':intstr.group(1), 'name':intstr.group(2), 'status':intstr.group(3), 'acc_int':intlist, 'ports':intlist2}
             vlan_list.append(vlan_entry)
     return vlan_list
@@ -477,6 +478,7 @@ def get_cli_sh_vlan_id_int_list(handler, vlannr):
     cli_output = handler.send_command(cli_param)
     cli_out_split = cli_output.split('\n')      # split output into lines
     for line in cli_out_split:
+        # 10   vlan10                           active    Eth2/3, Eth2/4, Eth2/5
         intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-]+)\s+([a-z]+)(\s+(.*))?$", line)
         if intstr:
             intf = intstr.group(5)
@@ -490,7 +492,7 @@ def get_cli_sh_vlan_id_int_list(handler, vlannr):
 
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     '''
-    Performs NXAPI cli_show JSON POST call
+    Performs NXAPI command (cli_show, cli_conf) JSON POST call
     cmd is string of commands separated by ;
         example: 'vlan 333 ;name ThreeThreeThree'
         it looks like there must be space before ;
