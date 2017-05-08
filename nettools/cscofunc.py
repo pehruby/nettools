@@ -362,10 +362,12 @@ def get_cli_sh_int_switchport(handler):
         if intstr:                                  # interface name was found, process the interface
             name = intstr.group(1)
             int_dict = {}
-            int_dict['int'] = name
+            int_dict['int'] = conv_int_to_interface_name(name) # gi1/3/4 -> GigabitEthernet1/3/4
             int_dict['switchport'] = find_regex_value_in_string(block, re.compile(r"Switchport:\s([A-Za-z]+)\n"))
-            int_dict['admin_mode'] = find_regex_value_in_string(block, re.compile(r"Administrative Mode:\s([A-Za-z\s]+)\n"))
-            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)\n"))
+            int_dict['admin_mode'] = find_regex_value_in_string(block, re.compile(r"Administrative Mode:\s([A-Za-z\s]+)[\n\(]"))
+            int_dict['admin_mode'] = int_dict['admin_mode'].rstrip()      # get rid of spaces at the end of 
+            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)[\n\(]"))
+            int_dict['oper_mode'] = int_dict['oper_mode'].rstrip()      # get rid of spaces at the end of the string
             int_dict['admin_trunc_enc'] = find_regex_value_in_string(block, re.compile(r"Administrative Trunking Encapsulation:\s([A-Za-z0-9\.]+)\n"))
             int_dict['trunk_negot'] = find_regex_value_in_string(block, re.compile(r"Negotiation of Trunking:\s([A-Za-z0-9\.]+)\n"))
             int_dict['access_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Access Mode VLAN:\s([0-9]+).+\n"))
@@ -380,6 +382,15 @@ def get_cli_sh_int_switchport(handler):
             sp_list.append(int_dict)
 
     return sp_list
+
+def get_cli_sh_int_switchport_dict(handler):
+    '''
+    '''
+    int_dict = {}
+    int_list = get_cli_sh_int_switchport(handler)
+    for item in int_list:
+        int_dict[item['int']] = item
+    return int_dict
 
 def process_raw_vlan_list(rawlist):
     ''' Process raw list of trunk vlan numbers obtained from show command, i.e. removes spaces, newlines, commas ...
@@ -410,9 +421,9 @@ def conv_int_to_interface_name(intname):
     '''
     Converts interface shortname to standartd name, i.e Gi1/1/1 to GigabitEthernet1/1/1
     '''
-    intname.replace('Gi', 'GigabitEthernet')
-    intname.replace('Te', 'TenGigabitEthernet')
-    intname.replace('Po', 'Port-channel')
+    intname = intname.replace('Gi', 'GigabitEthernet')
+    intname = intname.replace('Te', 'TenGigabitEthernet')
+    intname = intname.replace('Po', 'Port-channel')
     return intname
 
 def get_cli_sh_cdp_neighbor(handler):
@@ -488,6 +499,9 @@ def get_cli_sh_vlan_id_int_list(handler, vlannr):
             else:
                 intlist = []
             return intlist          # return after first match
+
+
+
 
 
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
