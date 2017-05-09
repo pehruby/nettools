@@ -561,7 +561,7 @@ def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     cmd is string of commands separated by ;
         example: 'vlan 333 ;name ThreeThreeThree'
         it looks like there must be space before ;
-    cmdtype can be cli_show, cli_conf
+    cmdtype can be cli_show,  cli_conf
     '''
     if secure:
         proto = "https"

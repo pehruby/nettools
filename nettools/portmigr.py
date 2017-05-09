@@ -20,6 +20,9 @@ file_name_nxos = "developtests/nxos.csv"
 
 output_file = "developtests/Output.csv"
 
+switch_ip = []
+nxos_switch = []
+
 def func_convert_list(source_list):
     '''
     The function creates a list of list in which the inner list has always to entries.
@@ -193,6 +196,7 @@ def func_list_to_list_of_dict(source_list):
     return new_list
 
 
+
 def func_list_of_port_ch(devices,source_list,typ):
     '''
     The function return a list of dictionaries
@@ -221,6 +225,7 @@ def func_list_of_port_ch(devices,source_list,typ):
 
 #    print (new_list)
     return new_list
+
 
 
 def func_port_ch_switch(source_list):
@@ -252,6 +257,97 @@ def func_port_ch_switch(source_list):
 
     return new_list
 
+def func_port_ch_switch2(source_list):
+    '''
+    (Petr) func_port_ch_switch2 creates just one list, I hope this is acceptable ...
+
+    The function return a list containing two lists of dictionaries the first list for all IOS switches and the second for all NXOS switches.
+    In the ios list is an entry for each switch and all interessting port-channel of the switch
+    In the nxos list is an entry for each vpc_id and all interessting port-channel of the vpc
+    '''
+    list_of_nxos_vpcs = []
+    list_of_ios_switches = []
+    for element in source_list:
+        if 'error' in element.keys() and element['error']!= None:
+            None
+        else:
+            if 'vpc_id' in element.keys():
+                if element['vpc_id'] not in list_of_nxos_vpcs:
+                    list_of_nxos_vpcs.append(element['vpc_id'])
+            else:
+                if element['sw_old'] not in list_of_ios_switches:
+                    list_of_ios_switches.append(element['sw_old'])
+#    print (list_of_nxos_vpcs)
+#    print (list_of_ios_switches)
+    # list_of_port_channels = func_list_of_port_ch(list_of_nxos_vpcs,source_list,'vpc_id')
+    # new_list = []
+    # new_list.append(list_of_port_channels)
+    # list_of_port_channels = func_list_of_port_ch(list_of_ios_switches,source_list,'sw_old')
+    # new_list.append(list_of_port_channels)
+#    print (new_list)
+    new_list = []
+    list_of_port_channels = func_list_of_port_ch(list_of_nxos_vpcs,source_list,'vpc_id')
+    for item in list_of_port_channels:
+        new_list.append(item)
+    list_of_port_channels = func_list_of_port_ch(list_of_ios_switches,source_list,'sw_old')
+    for item in list_of_port_channels:
+        new_list.append(item)
+
+
+    return new_list
+
+def func_list_to_file(source_list):
+    '''
+    The function creates a output file in csv format which contains the values for all keys in the variable key for each dictionary from the list of dictionaries 'source_list'
+    '''
+    keys = ('sw_old','port_old','ip_old_sw','port_ch_old','sw_new','port_new','ip_new_sw','port_ch_new','error','warning')
+    target_file = open(output_file, 'w')
+    target_file.write('sw_old;port_old;ip_old_sw;port_ch_old;sw_new;port_new;ip_new_sw;port_ch_new;error;warning\n')
+    for line in source_list:
+        for key in keys:
+            if key in line.keys():
+                target_file.write(str(line[key])+';')
+            else:
+                target_file.write(';')
+        target_file.write ('\n')
+    target_file.close()
+
+def convert_pc_list_to_dict(pc_list):
+    '''
+    Converts list of portchannels into directory
+    key is PC name (i.e Po33)
+    value is list of interfaces
+    '''
+    new_dict = {}
+    for item in pc_list:
+        new_dict['Po'+item['pc_number']] = item['int_list']
+    return new_dict
+
+def func_create_dict_with_pc_ports(big_list, dev_pc_list, username, password):
+    '''
+    Creates list of dictionaries. Each dictionary contains following keys:
+    sw_old - name of the swich
+    port_ch_old - name of portchannel (ie. Po33)
+    ports - list of ports in port_ch_old
+    sw_old2 - (NXOS only)
+    ports2 - (NXOS only)
+    '''
+    list_of_dict = []
+    for item in dev_pc_list:
+        if 'pc_list' in item.keys():      # it is IOS device
+            device_ip = switch_ip[item['name']] #get IP of item
+            net_connect = cli_open_session(device_ip, username, password)   # connect to device
+            list_of_device_pc = cscofunc.get_cli_sh_etherchannel_summary(net_connect)
+            dict_of_device_pc = convert_pc_list_to_dict(list_of_device_pc)
+            for pc in item['pc_list']:
+                new_dict = {}
+                new_dict['sw_old'] = item['name']
+                new_dict['port_ch_old'] = pc
+                new_dict['ports'] = dict_of_device_pc[pc]
+                list_of_dict.append(new_dict)
+        if 'vpc_id' in item.keys():       # NXOS device
+            None            # tommorow ...
+    return list_of_dict
 
 def func_list_to_file(source_list):
     '''
@@ -287,6 +383,9 @@ def main():
 
     username = ''
     pswd = ''
+    global switch_ip
+    global nxos_switch
+
     usage_str = '''
     Usage: portmigr.py [OPTIONS]
     -h,     --help                      display help
@@ -331,7 +430,8 @@ def main():
     list_from_file = func_lines_from_csv_to_list(file_name)
     list_from_file = func_list_to_list_of_dict(list_from_file)
     list_from_file = add_items_to_port_list(list_from_file, username, pswd)
-    list_of_po = func_port_ch_switch(list_from_file)
+    list_of_po = func_port_ch_switch2(list_from_file)
+    list_of_po_ports = func_create_dict_with_pc_ports(list_from_file, list_of_po, username, pswd)
     func_list_to_file(list_from_file)
    
    
