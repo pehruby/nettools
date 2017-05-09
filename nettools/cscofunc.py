@@ -501,6 +501,57 @@ def get_cli_sh_vlan_id_int_list(handler, vlannr):
             return intlist          # return after first match
 
 
+def get_cli_sh_etherchannel_summary(handler):
+    '''
+    Returns list of port-channel entries.
+    Each entry is directory with Po number and list of interfaces in this port-channel
+
+    Notice: it doesn't work with automaticaly created Po which are outside the portchanel range
+    for example Po for service module on Cat6k ...
+    In that case the interface list is empty
+    '''
+    pc_list = []
+    cli_param = "sh etherchannel"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('----------')
+    for block in cli_out_split:
+        int_dict = {}
+        int_dict['pc_number'] = find_regex_value_in_string(block, re.compile(r"Group:\s+([0-9]+)\s+\n"))
+        if int_dict['pc_number']:       # port-channel number found
+            int_dict['int_list'] = []
+            cli_param = "sh etherchannel " + int_dict['pc_number'] + " detail"
+            cli_output = handler.send_command(cli_param)
+            cli_out_split2 = cli_output.split('------------')
+            for block2 in cli_out_split2:       # search for interfaces in specific port-channel
+                iface = find_regex_value_in_string(block2, re.compile(r"Port:\s+([A-Za-z0-9/\.]+)\n"))
+                if iface:       # interface found
+                    int_dict['int_list'].append(iface)
+            pc_list.append(int_dict)
+
+    return pc_list
+
+def get_cli_sh_etherchannel_summary_nxos(handler):
+    '''
+    '''
+
+    pc_list = []
+    cli_param = "sh port-channel database"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n\n')
+    for block in cli_out_split:
+        int_dict = {}
+        intstr = re.match(r"port-channel([0-9]+)\n", block)
+        if intstr:
+            int_dict['pc_number'] = intstr.group(1)
+            int_dict['int_list'] = []
+            cli_out_split2 = block.split('\n')
+            for line in cli_out_split2:
+                intstr = re.match(r"([\sA-Za-z:]+)?Ethernet([0-9/]+)\s+\[([a-z\s]+)\]\s+\[([a-z]+)\]", line)
+                if intstr:
+                    int_dict['int_list'].append("Ethernet"+intstr.group(2))
+            pc_list.append(int_dict)
+    return pc_list
+
 
 
 
