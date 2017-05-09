@@ -13,11 +13,22 @@ from paramiko.ssh_exception import SSHException
 
 import cscofunc
 
-file_name = "developtests/Ports.csv"
+file_name = "developtests/Ports1.csv"
+file_name_sip = "developtests/switch_ip.csv"
+file_name_nxos = "developtests/nxos.csv"
 
-switch_ip = {"name":"1.2.3.4", "name2":"2.3.4.5"}
 
 output_file = "developtests/Output.csv"
+
+def func_convert_list(source_list):
+    '''
+    The function creates a list of list in which the inner list has always to entries.
+    '''
+    new_dict = {}
+    for element in source_list:
+        new_dict.update({element[0]: element[1]})
+
+    return new_dict
 
 
 def int_number_to_name(sh_int_des_output, number):
@@ -96,8 +107,8 @@ def add_items_to_port_list(portlist, username, pswd):
     return portlist         # return list
 
 
-# Reads the source file (defined in variable 'file_name' in to a list
 def func_lines_from_csv_to_list(source_file):
+# Reads the source file (defined in variable 'file_name' in to a list
     if os.path.isfile(source_file) == True and os.stat(source_file).st_size != 0:
         with open(source_file,'r') as file:
             reader = csv.reader(file)
@@ -107,6 +118,19 @@ def func_lines_from_csv_to_list(source_file):
         return -1
     file.close
 
+def func_new_list_from_list(source_list):
+    '''
+    The function creates a list of dictionaries from a list.
+    The Keys in each dictionary are 'sw1_name','sw2_name' and 'vpc_id'
+    '''
+    new_list = []
+    for element in source_list:
+        temp_dict = {'sw1_name': element[0], 'sw2_name': element[1], 'vpc_id': int(element[2])}
+        #        print (temp_dict)
+        new_list.append(temp_dict)
+        #    print (new_list)
+
+    return new_list
 
 def func_list_to_list_of_dict(source_list):
     '''
@@ -163,36 +187,44 @@ def func_list_to_list_of_dict(source_list):
                 else:
                     dict_temp["error"] = [element[2]+' is not a valid switchname']
             dict_temp["port_new"] = element[3]
-            print ('Dictionary des Eintrags'+str(dict_temp))
+#            print ('Dictionary des Eintrags'+str(dict_temp))
             new_list.append(dict_temp)
 
     return new_list
 
-''''
-The function return a list of dictionaries
-Each dictionary has two keys 'name' as a string which is either the vpc_id(nxos) or the switch name (ios)and 'pc_list' 
-which is a list of all interessting port-channelfor the vpc(nxos) or switch(ios)
-'''
+
 def func_list_of_port_ch(devices,source_list,typ):
+    '''
+    The function return a list of dictionaries
+    Each dictionary has two keys 'name' as a string which is either the vpc_id(nxos) or the switch name (ios)and 'pc_list' 
+    which is a list of all interessting port-channelfor the vpc(nxos) or switch(ios)
+    '''
+#    print (devices)
     new_list = []
     for device in devices:
         temp_list = []
         for line in source_list:
-            if 'error' in line.keys() and line['error'] != None:
+            if line['error'] != None:
                 None
             else:
-                if line[typ] == device:
-                    if line['port_ch_old'] not in temp_list:
-                        new_list.append(line['port_ch_old'])
-        temp_dict['name':device,'pc_list':new_list]
-        print (temp_dict)
+                if typ in line.keys():
+                    if line[typ] == device:
+                        if 'port_ch_old' in line.keys():
+                            if line['port_ch_old'] not in temp_list:
+                                temp_list.append(line['port_ch_old'])
+                        else:
+#                            print('no port-channel')
+                            None
+        temp_dict = {'name':device,'pc_list':temp_list}
+#        print (temp_dict)
         new_list.append(temp_dict)
 
-    print (new_list)
+#    print (new_list)
     return new_list
 
+
 def func_port_ch_switch(source_list):
-    ''''
+    '''
     The function return a list containing two lists of dictionaries the first list for all IOS switches and the second for all NXOS switches.
     In the ios list is an entry for each switch and all interessting port-channel of the switch
     In the nxos list is an entry for each vpc_id and all interessting port-channel of the vpc
@@ -209,16 +241,34 @@ def func_port_ch_switch(source_list):
             else:
                 if element['sw_old'] not in list_of_ios_switches:
                     list_of_ios_switches.append(element['sw_old'])
-    print (list_of_nxos_vpcs)
-    print (list_of_ios_switches)
+#    print (list_of_nxos_vpcs)
+#    print (list_of_ios_switches)
     list_of_port_channels = func_list_of_port_ch(list_of_nxos_vpcs,source_list,'vpc_id')
     new_list = []
     new_list.append(list_of_port_channels)
     list_of_port_channels = func_list_of_port_ch(list_of_ios_switches,source_list,'sw_old')
     new_list.append(list_of_port_channels)
-    print (new_list)
+#    print (new_list)
 
     return new_list
+
+
+def func_list_to_file(source_list):
+    '''
+    The function creates a output file in csv format which contains the values for all keys in the variable key for each dictionary from the list of dictionaries 'source_list'
+    '''
+    keys = ('sw_old','port_old','ip_old_sw','port_ch_old','sw_new','port_new','ip_new_sw','port_ch_new','error','warning')
+    target_file = open(output_file, 'w')
+    target_file.write('sw_old;port_old;ip_old_sw;port_ch_old;sw_new;port_new;ip_new_sw;port_ch_new;error;warning\n')
+    for line in source_list:
+        for key in keys:
+            if key in line.keys():
+                target_file.write(str(line[key])+';')
+            else:
+                target_file.write(';')
+        target_file.write ('\n')
+    target_file.close()
+
 
 '''
 def list_to_csv(source_list):
@@ -237,7 +287,12 @@ def main():
 
     username = ''
     pswd = ''
-    
+    usage_str = '''
+    Usage: portmigr.py [OPTIONS]
+    -h,     --help                      display help
+    -u,     --username                  username
+    -p,     --password                  password, optional
+    '''
     argv = sys.argv[1:]
 
     try:
@@ -267,15 +322,24 @@ def main():
 
 
 
-
+    list_from_file = func_lines_from_csv_to_list(file_name_sip)
+    switch_ip = func_convert_list(list_from_file)
+#    print(switch_ip)
+    list_from_file = func_lines_from_csv_to_list(file_name_nxos)
+    nxos_switch = func_new_list_from_list(list_from_file)
+#    print(nxos_switch)
     list_from_file = func_lines_from_csv_to_list(file_name)
     list_from_file = func_list_to_list_of_dict(list_from_file)
+    list_from_file = add_items_to_port_list(list_from_file, username, pswd)
     list_of_po = func_port_ch_switch(list_from_file)
+    func_list_to_file(list_from_file)
+   
+   
 #    list_to_csv(list_of_dict)
-    list_of_dict_new = add_items_to_port_list(list_of_po, username, pswd)
-    print (list_of_dict)
-    json_output = json.dumps(list_of_dict_new, separators=(',', ':'), indent=4)
-    print(json_output)
+#    list_of_dict_new = add_items_to_port_list(list_of_po, username, pswd)
+    #print (list_of_dict_new)
+    #json_output = json.dumps(list_of_dict_new, separators=(',', ':'), indent=4)
+    #print(json_output)
 
 if __name__ == '__main__':
     main()
