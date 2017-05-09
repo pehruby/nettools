@@ -96,7 +96,8 @@ def add_items_to_port_list(portlist, username, pswd):
     return portlist         # return list
 
 
-def lines_from_csv_to_list(source_file):
+# Reads the source file (defined in variable 'file_name' in to a list
+def func_lines_from_csv_to_list(source_file):
     if os.path.isfile(source_file) == True and os.stat(source_file).st_size != 0:
         with open(source_file,'r') as file:
             reader = csv.reader(file)
@@ -106,7 +107,16 @@ def lines_from_csv_to_list(source_file):
         return -1
     file.close
 
-def list_to_list_of_dict(source_list):
+
+def func_list_to_list_of_dict(source_list):
+    '''
+    Converts the list in a list of dictionaries with the follwing keys:
+    reads the values for the keys sw_old, port_old, sw_new, port_new
+    gets the following mandatory keys from the list switch_ip:
+    ip_old_sw, ip_new_sw
+    gets the following optional keys from the list nxos_switch if the old switch is a Nexus switch:
+    vpc_id, sw_pair, ip_pair_sw
+    '''
     new_list = []
     for element in source_list:
         dict_temp = {"error":None,"warning":None}
@@ -121,6 +131,16 @@ def list_to_list_of_dict(source_list):
 # Conversion of switchname to IP address
             if element[0].lower().startswith('de'):
                 dict_temp["ip_old_sw"] = switch_ip[element[0].lower()]
+# if the old switch is a nexus switch the pair_switch name and ip address and the vpc-id are added to the dictionary
+                for switch in nxos_switch:
+                    if switch['sw1_name'] == element[0].lower():
+                        dict_temp['vpc_id'] = switch['vpc_id']
+                        dict_temp['sw_pair'] = switch['sw2_name']
+                        dict_temp['ip_pair_sw'] = switch_ip[switch['sw2_name']]
+                    elif switch['sw2_name'] == element[0].lower():
+                        dict_temp['vpc_id'] = switch['vpc_id']
+                        dict_temp['sw_pair'] = switch['sw1_name']
+                        dict_temp['ip_pair_sw'] = switch_ip[switch['sw1_name']]
             else:
                 if dict_temp["error"] != None:
                     dict_temp["error"].append(element[0] + ' is not a valid switchname')
@@ -143,8 +163,60 @@ def list_to_list_of_dict(source_list):
                 else:
                     dict_temp["error"] = [element[2]+' is not a valid switchname']
             dict_temp["port_new"] = element[3]
-#            print (dict_temp)
+            print ('Dictionary des Eintrags'+str(dict_temp))
             new_list.append(dict_temp)
+
+    return new_list
+
+''''
+The function return a list of dictionaries
+Each dictionary has two keys 'name' as a string which is either the vpc_id(nxos) or the switch name (ios)and 'pc_list' 
+which is a list of all interessting port-channelfor the vpc(nxos) or switch(ios)
+'''
+def func_list_of_port_ch(devices,source_list,typ):
+    new_list = []
+    for device in devices:
+        temp_list = []
+        for line in source_list:
+            if 'error' in line.keys() and line['error'] != None:
+                None
+            else:
+                if line[typ] == device:
+                    if line['port_ch_old'] not in temp_list:
+                        new_list.append(line['port_ch_old'])
+        temp_dict['name':device,'pc_list':new_list]
+        print (temp_dict)
+        new_list.append(temp_dict)
+
+    print (new_list)
+    return new_list
+
+def func_port_ch_switch(source_list):
+    ''''
+    The function return a list containing two lists of dictionaries the first list for all IOS switches and the second for all NXOS switches.
+    In the ios list is an entry for each switch and all interessting port-channel of the switch
+    In the nxos list is an entry for each vpc_id and all interessting port-channel of the vpc
+    '''
+    list_of_nxos_vpcs = []
+    list_of_ios_switches = []
+    for element in source_list:
+        if 'error' in element.keys() and element['error']!= None:
+            None
+        else:
+            if 'vpc_id' in element.keys():
+                if element['vpc_id'] not in list_of_nxos_vpcs:
+                    list_of_nxos_vpcs.append(element['vpc_id'])
+            else:
+                if element['sw_old'] not in list_of_ios_switches:
+                    list_of_ios_switches.append(element['sw_old'])
+    print (list_of_nxos_vpcs)
+    print (list_of_ios_switches)
+    list_of_port_channels = func_list_of_port_ch(list_of_nxos_vpcs,source_list,'vpc_id')
+    new_list = []
+    new_list.append(list_of_port_channels)
+    list_of_port_channels = func_list_of_port_ch(list_of_ios_switches,source_list,'sw_old')
+    new_list.append(list_of_port_channels)
+    print (new_list)
 
     return new_list
 
@@ -195,10 +267,12 @@ def main():
 
 
 
-    list_from_file = lines_from_csv_to_list(file_name)
-    list_of_dict = list_to_list_of_dict(list_from_file)
+
+    list_from_file = func_lines_from_csv_to_list(file_name)
+    list_from_file = func_list_to_list_of_dict(list_from_file)
+    list_of_po = func_port_ch_switch(list_from_file)
 #    list_to_csv(list_of_dict)
-    list_of_dict_new = add_items_to_port_list(list_of_dict, username, pswd)
+    list_of_dict_new = add_items_to_port_list(list_of_po, username, pswd)
     print (list_of_dict)
     json_output = json.dumps(list_of_dict_new, separators=(',', ':'), indent=4)
     print(json_output)
