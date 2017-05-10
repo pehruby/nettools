@@ -623,8 +623,28 @@ def get_cli_sh_etherchannel_summary_nxos(handler):
             pc_list.append(int_dict)
     return pc_list
 
-
-
+def get_cli_sh_vpc_nxos(handler):
+    '''
+    Returns list of VPCs, eech entry in list is directory
+    id - vpc ip (i.e. 46)
+    port - vpc potr (i.e. Po46) 
+    status - status of VPC
+    '''
+    vpc_list = []
+    cli_param = "sh vpc"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('vPC status')      # split output into two parts
+    cli_out_split2 = cli_out_split[1].split('\n')      # process 2nd part
+    for line in cli_out_split2:
+        # 1      Po1         up     success     success                    1,4,10-11,1
+        int_dict = {}
+        intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9]+)\s+([a-z\*]+).*", line)
+        if intstr:
+            int_dict['id'] = intstr.group(1)
+            int_dict['port'] = intstr.group(2)
+            int_dict['status'] = intstr.group(3)
+            vpc_list.append(int_dict)
+    return vpc_list
 
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     '''
