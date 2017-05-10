@@ -71,7 +71,7 @@ def add_items_to_port_list(portlist, username, pswd):
     Output:
         potrlist - list of dictionaries with new kews added to the dictionary
     '''
-    switch_port_dict = {}       # dictionary where key is switch IP and value is dictionary of interface porameters of switches
+    switch_port_dict = {}       # dictionary where key is switch IP and value is dictionary of interface switchport parameters 
     sh_int_desc_dict = {}       # dictionary where key is IP of the switch and value is 'sh interface desc'
     for item in portlist:       # process all items in list
         if item['error'] != None:
@@ -89,7 +89,11 @@ def add_items_to_port_list(portlist, username, pswd):
             cli_param = "sh interface description"
             sh_int_desc_dict[ip_of_switch] = net_connect.send_command(cli_param)       
             if ip_of_switch not in switch_port_dict.keys():
-                switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict(net_connect)
+                if 'vpc_id' in item:    # test if it is NX-OS
+                    switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict_nxos(net_connect)
+                    pc_summ = cscofunc.get_cli_sh_etherchannel_summary_nxos(net_connect)
+                else:
+                    switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict(net_connect)
             net_connect.disconnect()        # disconnect from the switch
         full_int_name = int_number_to_name(sh_int_desc_dict[ip_of_switch], item['port_old'])    # 1/3/4 -> GigabitEthernet1/3/4
         if full_int_name == 'Error':
@@ -104,11 +108,26 @@ def add_items_to_port_list(portlist, username, pswd):
         item['sw_mode'] = switch_port_dict[ip_of_switch][iface]['oper_mode']            # add new entries for switch which is being processeed
         item['vlan_list'] = switch_port_dict[ip_of_switch][iface]['trunk_vlans']
         item['native_vlan'] = switch_port_dict[ip_of_switch][iface]['trunk_native_mode_vlan']
-        item['port_ch_old'] = switch_port_dict[ip_of_switch][iface]['bundle_member']
+        if 'vpc_id' in item:    # test if it is NX-OS
+            pcnr = get_nxos_pc_port_number(item['port_old'], pc_summ)
+            if pcnr != '0':
+                item['port_ch_old'] = pcnr
+            else:
+                item['error'].append('port_ch_old number not found')
+        else:       # IOS
+            item['port_ch_old'] = switch_port_dict[ip_of_switch][iface]['bundle_member']
 
 
     return portlist         # return list
 
+def get_nxos_pc_port_number(iface, pc_list):
+    '''
+    Returns portchannel number which is iface member of
+    '''
+    for item in pc_list:
+        if iface in item['int_list']:            # is interface member of port-channel pcnum? 
+            return item['pc_number']        # return port-channel number
+    return '0'            # otherwise return 0
 
 def func_lines_from_csv_to_list(source_file):
 # Reads the source file (defined in variable 'file_name' in to a list
@@ -314,7 +333,7 @@ def func_list_to_file(source_list):
 
 def convert_pc_list_to_dict(pc_list):
     '''
-    Converts list of portchannels into directory
+    Converts list of portchannels into dictionary
     key is PC name (i.e Po33)
     value is list of interfaces
     '''
@@ -346,7 +365,16 @@ def func_create_dict_with_pc_ports(big_list, dev_pc_list, username, password):
                 new_dict['ports'] = dict_of_device_pc[pc]
                 list_of_dict.append(new_dict)
         if 'vpc_id' in item.keys():       # NXOS device
-            None            # tommorow ...
+            device_ip = switch_ip[item['name']] #get IP of item
+            net_connect = cli_open_session(device_ip, username, password)   # connect to device
+            list_of_device_pc = cscofunc.get_cli_sh_etherchannel_summary_nxos(net_connect)
+            dict_of_device_pc = convert_pc_list_to_dict(list_of_device_pc)
+            for pc in item['pc_list']:
+                new_dict = {}
+                new_dict['sw_old'] = item['name']
+                new_dict['port_ch_old'] = pc
+                new_dict['ports'] = dict_of_device_pc[pc]
+                list_of_dict.append(new_dict)
     return list_of_dict
 
 def func_list_to_file(source_list):
