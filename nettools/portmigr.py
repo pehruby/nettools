@@ -16,6 +16,7 @@ import cscofunc
 file_name = "developtests/Ports1.csv"
 file_name_sip = "developtests/switch_ip.csv"
 file_name_nxos = "developtests/nxos.csv"
+file_name_old_new = 'sw_old_new.csv'
 
 
 output_file = "developtests/Output.csv"
@@ -654,14 +655,15 @@ def main():
 
 
 
-    list_from_file = func_lines_from_csv_to_list(file_name_sip)
-    switch_ip = func_convert_list(list_from_file)
-#    print(switch_ip)
-    list_from_file = func_lines_from_csv_to_list(file_name_nxos)
-    nxos_switch = func_new_list_from_list(list_from_file)
-#    print(nxos_switch)
+    list_of_switch_ips = func_lines_from_csv_to_list(file_name_sip)
+    switch_ip = func_convert_list(list_of_switch_ips)
+    list_of_vpcs = func_lines_from_csv_to_list(file_name_nxos)
+    nxos_switch = func_new_list_from_list(list_of_vpcs)
+    list_of_switch_old_to_new = func_lines_from_csv_to_list(file_name_old_new)
+    list_old_to_new = func_convert_list(list_of_switch_old_to_new)
+
     list_from_file = func_lines_from_csv_to_list(file_name)
-    list_from_file = func_list_to_list_of_dict(list_from_file)
+    list_from_file = func_list_to_list_of_dict(list_from_file, list_old_to_new)
     list_from_file = add_items_to_port_list(list_from_file, username, pswd)
     list_of_po = func_port_ch_switch2(list_from_file)
     list_of_po_ports = func_create_dict_with_pc_ports(list_from_file, list_of_po, username, pswd)
@@ -671,7 +673,16 @@ def main():
     list_from_file = func_vlans_in_fabricpath(list_from_file, username, pswd)
     func_list_to_file(list_from_file)
 
-
+'''
+    list_of_switch_ips = func_lines_from_csv_to_list(file_name_sip)
+    switch_ip = func_convert_list(list_of_switch_ips)
+    list_of_vpcs = func_lines_from_csv_to_list(file_name_nxos)
+    nxos_switch = func_new_list_from_list(list_of_vpcs)
+    list_of_switch_old_to_new = func_lines_from_csv_to_list(file_name_old_new)
+    list_old_to_new = func_convert_list(list_of_switch_old_to_new)
+    list_from_file = func_lines_from_csv_to_list(file_name)
+    list_from_file = func_list_to_list_of_dict(list_from_file,list_old_to_new)
+'''
    
 #    list_to_csv(list_of_dict)
 #    list_of_dict_new = add_items_to_port_list(list_of_po, username, pswd)
