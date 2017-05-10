@@ -115,7 +115,9 @@ def add_items_to_port_list(portlist, username, pswd):
             else:
                 item['error'].append('port_ch_old number not found')
         else:       # IOS
-            item['port_ch_old'] = switch_port_dict[ip_of_switch][iface]['bundle_member']
+            po_name = switch_port_dict[ip_of_switch][iface]['bundle_member'] # portchannel name (with Po in name)
+            pcnr = po_name.replace('Po','')
+            item['port_ch_old'] = pcnr
 
 
     return portlist         # return list
@@ -173,17 +175,17 @@ def func_list_to_list_of_dict(source_list):
         elif element[0] == '':
             None
         else:
-            dict_temp["sw_old"] = element[0]
+            dict_temp["sw_old"] = element[0].lower()
 # Conversion of switchname to IP address
-            if element[0].lower().startswith('de'):
-                dict_temp["ip_old_sw"] = switch_ip[element[0].lower()]
+            if dict_temp["sw_old"].startswith('de'):
+                dict_temp["ip_old_sw"] = switch_ip[dict_temp["sw_old"]]
 # if the old switch is a nexus switch the pair_switch name and ip address and the vpc-id are added to the dictionary
                 for switch in nxos_switch:
-                    if switch['sw1_name'] == element[0].lower():
+                    if switch['sw1_name'] == dict_temp["sw_old"]:
                         dict_temp['vpc_id'] = switch['vpc_id']
                         dict_temp['sw_pair'] = switch['sw2_name']
                         dict_temp['ip_pair_sw'] = switch_ip[switch['sw2_name']]
-                    elif switch['sw2_name'] == element[0].lower():
+                    elif switch['sw2_name'] == dict_temp["sw_old"]:
                         dict_temp['vpc_id'] = switch['vpc_id']
                         dict_temp['sw_pair'] = switch['sw1_name']
                         dict_temp['ip_pair_sw'] = switch_ip[switch['sw1_name']]
@@ -193,16 +195,16 @@ def func_list_to_list_of_dict(source_list):
                 else:
                     dict_temp["error"] = [element[0] + ' is not a valid switchname']
             dict_temp["port_old"] = element[1]
-            dict_temp["sw_new"] = element [2]
+            dict_temp["sw_new"] = element[2].lower()
 # Conversion of switchname to IP address including some input validation
-            if element[2].lower().startswith('de'):
+            if dict_temp["sw_new"].startswith('de'):
 #                print ("starts with de")
-                if element[2].lower().endswith('-1') or element[2].lower().endswith('-2'):
+                if dict_temp["sw_new"].endswith('-1') or dict_temp["sw_new"].endswith('-2'):
 #                    print ("ends with -1 or -2")
-                    dict_temp["ip_new_sw"] = switch_ip[element[2].lower()]
+                    dict_temp["ip_new_sw"] = switch_ip[dict_temp["sw_new"]]
                 else:
 #                    print ("does not end with -1 or -2")
-                    dict_temp["ip_new_sw"] = switch_ip[element[2].lower()+'-1']
+                    dict_temp["ip_new_sw"] = switch_ip[dict_temp["sw_new"]+'-1']
             else:
                 if dict_temp["error"] != None:
                     dict_temp["error"].append(element[2]+' is not a valid switchname')
@@ -238,7 +240,10 @@ def func_list_of_port_ch(devices,source_list,typ):
                         else:
 #                            print('no port-channel')
                             None
-        temp_dict = {'name':device,'pc_list':temp_list}
+        if typ is 'vpc_id':
+            temp_dict = {'vpc_id':device,'pc_list':temp_list}
+        else:
+            temp_dict = {'name':device,'pc_list':temp_list}
 #        print (temp_dict)
         new_list.append(temp_dict)
 
@@ -353,7 +358,7 @@ def func_create_dict_with_pc_ports(big_list, dev_pc_list, username, password):
     '''
     list_of_dict = []
     for item in dev_pc_list:
-        if 'pc_list' in item.keys():      # it is IOS device
+        if 'name' in item.keys():      # it is IOS device
             device_ip = switch_ip[item['name']] #get IP of item
             net_connect = cli_open_session(device_ip, username, password)   # connect to device
             list_of_device_pc = cscofunc.get_cli_sh_etherchannel_summary(net_connect)
@@ -362,20 +367,41 @@ def func_create_dict_with_pc_ports(big_list, dev_pc_list, username, password):
                 new_dict = {}
                 new_dict['sw_old'] = item['name']
                 new_dict['port_ch_old'] = pc
-                new_dict['ports'] = dict_of_device_pc[pc]
+                new_dict['ports'] = dict_of_device_pc['Po'+pc]
                 list_of_dict.append(new_dict)
+            net_connect.disconnect()
         if 'vpc_id' in item.keys():       # NXOS device
-            device_ip = switch_ip[item['name']] #get IP of item
+            (sw_old1, sw_old2) = get_switchnames_for_vpcid(item['vpc_id'])
+            device_ip = switch_ip[sw_old1] #get IP of first device
             net_connect = cli_open_session(device_ip, username, password)   # connect to device
             list_of_device_pc = cscofunc.get_cli_sh_etherchannel_summary_nxos(net_connect)
             dict_of_device_pc = convert_pc_list_to_dict(list_of_device_pc)
-            for pc in item['pc_list']:
+            for pc in item['pc_list']:  # hopefuly just one entry ...
                 new_dict = {}
-                new_dict['sw_old'] = item['name']
+                new_dict['sw_old'] = sw_old1
+                new_dict['port_ch_old'] = pc        
+                new_dict['ports'] = dict_of_device_pc['Po'+pc]
+            net_connect.disconnect() 
+            device_ip = switch_ip[sw_old2] #get IP of second device
+            net_connect = cli_open_session(device_ip, username, password)   # connect to device
+            list_of_device_pc = cscofunc.get_cli_sh_etherchannel_summary_nxos(net_connect)
+            dict_of_device_pc = convert_pc_list_to_dict(list_of_device_pc)
+            for pc in item['pc_list']:  # hopefuly just one entry ...
+                new_dict['sw_old2'] = sw_old2
                 new_dict['port_ch_old'] = pc
-                new_dict['ports'] = dict_of_device_pc[pc]
-                list_of_dict.append(new_dict)
+                new_dict['ports2'] = dict_of_device_pc['Po'+pc]
+            list_of_dict.append(new_dict)
+            net_connect.disconnect()
     return list_of_dict
+
+def get_switchnames_for_vpcid(vpcid):
+    '''
+    Get davices which has vpcid configured
+    '''
+    for item in nxos_switch:
+        if item['vpc_id'] == vpcid:
+            return (item['sw1_name'], item['sw2_name'])   # Return names of two switches
+    return ('','')          # Error, devices were not found
 
 def func_list_to_file(source_list):
     '''
@@ -394,18 +420,142 @@ def func_list_to_file(source_list):
     target_file.close()
 
 
-'''
-def list_to_csv(source_list):
-    target_file = open(output_file, 'w')
-    output = source_list[0].keys()
-    output_line = ""
-        for value in output:
-            output_line += value+','
-        target_file.write(output+'\n')
-    for line in source_list:
-        target_file.write(str(list(line.values()))+'\n')
-    target_file.close()
-'''
+def func_change_mapped_vlans(list_from_file):
+    '''
+    This function changes vlans in the the keys 'vlans' and 'native_vlan' in the globalvariable list_from_file if they are in the list of dictionaries that contains all vlan_mappings
+    If a change is done there will be an entry in vlans_trans and in warning 
+    '''
+    mapping_list = [{'old_vlan': 400, 'new_vlan': 500}, {'old_vlan': 405, 'new_vlan': 505}]
+
+    for element in list_from_file:
+        if element['error'] == None:
+            index = 0
+            for vlan in element['vlan_list']:
+                for item in mapping_list:
+                    if vlan == item['old_vlan']:
+                        element['vlan_list'][index] = item['new_vlan']
+                        if element['warning'] == None:
+                            element['warning'] == [str(vlan) + ' is a mapped vlan']
+                        else:
+                            element['error'].append(str(vlan) + ' is a mapped vlan')
+                        if 'vlans_trans' in element.keys():
+                            element['vlans_trans'].append(item)
+                        else:
+                            element['vlans_trans'] = [item]
+                index += 1
+            if element['sw_mode'] == 'trunk':
+                for item in mapping_list:
+                    if element['native_vlan'] == item['old_vlan']:
+                        if element['warning'] == None:
+                            element['warning'] = ['The native VLAN is a mapped vlan']
+                        else:
+                            element['error'].append('The native VLAN is a mapped vlan')
+#                        print('Change ' + str(element['native_vlan']) + ' against ' + str(item['new_vlan']))
+                        element['native_vlan'] = item['new_vlan']
+    return list_from_file
+
+def get_vlan_list_of_switch(device_ip, username, password):
+    '''
+    Returns list of VLans configured on switch 'device_ip'
+    '''
+    vlan_list = []
+    net_connect = cli_open_session(device_ip, username, password)   # connect to device
+    vlan_dict = cscofunc.get_cli_sh_vlan(net_connect)
+    for item in vlan_dict:          # go through all vlan entries
+        vlan_list.append(item['number'])    # add vlan number to target list
+    net_connect.disconnect()
+    return vlan_list
+
+
+def func_vlans_in_fabricpath(list_from_file, username, pswd):
+    '''
+    This function checks if all vlans from the variabl list_from_file are in a variable vlan_list
+    If not the function will fill the key error
+    '''
+    for element in list_from_file:
+        if element['error'] == None:
+            vlan_list = get_vlan_list_of_switch(element['ip_old_sw'], username, pswd) # HERE MUST BE NEW SWITCH, JUST TEST
+            for vlan in element['vlan_list']:
+                if vlan not in vlan_list:
+                    if element['error'] == None:
+                        element['error'] == [str(vlan)+' is not on the new switch']
+                    else:
+                        element['error'].append(str(vlan)+' is not on the new switch')
+            if element['sw_mode'] == 'trunk':
+                if element['native_vlan'] not in vlan_list:
+                    if element['error'] == None:
+                        element['error'] == [str(element['native_vlan']) + ' is not on the new switch']
+                    else:
+                        element['error'].append(str(element['native_vlan']) + ' is not on the new switch')
+
+    return list_from_file
+
+def func_ports_in_list(sw_name,port_list,list_from_file):
+    '''
+    the function checks if all the ports in the port_list of the switch with the name sw_name are in the input file
+    :param sw_name: 
+    :param port_list: 
+    :return: 
+    '''
+    all_in = True
+    for port in port_list:
+        found = False
+#        print ('new port '+str(port))
+        for element in list_from_file:
+            if element['sw_old'] == sw_name and element['port_old'] == port:
+#                print ('Port found')
+                found = True
+        if found == False:
+            all_in = False
+
+    return all_in
+
+def func_po_ch_all_in(source_list,list_from_file):
+    '''
+    This function checks with the help of a sub function (func_ports_in_list) if all ports belonging to a port-channel are in the input file
+    :param source_list: 
+    :return: 
+    '''
+    for item in source_list:
+        all_in = func_ports_in_list(item['sw_old'],item['ports'],list_from_file)
+        if 'sw_old2' in item.keys():
+            all_in2 = func_ports_in_list(item['sw_old2'],item['ports2'],list_from_file)
+            all_in = all_in and all_in2
+        item['all_in'] = all_in
+
+    return source_list
+
+def func_find_ports_of_pc(sw_name,port_list,list_from_file):
+    '''
+    The function searches in the global variable list_from_file for all ports from the portlist on a switch and writes a warning massage in 
+    :param sw_name: 
+    :param port_list: 
+    :return: 
+    '''
+
+    for port in port_list:
+        for element in list_from_file:
+            if element['sw_old'] == sw_name and element['port_old'] == port:
+                if element['error'] == None:
+                    element['error'] = ['not all ports of port-channel in list']
+                else:
+                    element['error'].append('not all ports of port-channel in list')
+
+    return list_from_file
+
+def func_write_po_error(source_list,list_from_file):
+    '''
+    The function searches for incomplete port-channels and if it finds one forwards the information of the switchname(s) and the associated port_list to the function func_find_ports_of_pc
+    :param source_list: 
+    :return: 
+    '''
+    for item in source_list:
+        if item['all_in'] == False:
+            list_from_file = func_find_ports_of_pc(item['sw_old'], item['ports'],list_from_file)
+            if 'ports2' in item.keys():
+                list_from_file = func_find_ports_of_pc(item['sw_old2'], item['ports2'],list_from_file)
+
+    return list_from_file
 
 def main():
 
@@ -460,8 +610,13 @@ def main():
     list_from_file = add_items_to_port_list(list_from_file, username, pswd)
     list_of_po = func_port_ch_switch2(list_from_file)
     list_of_po_ports = func_create_dict_with_pc_ports(list_from_file, list_of_po, username, pswd)
+    list_of_po_ports = func_po_ch_all_in(list_of_po_ports,list_from_file)
+    list_from_file = func_write_po_error(list_of_po_ports,list_from_file)
+    list_from_file = func_change_mapped_vlans(list_from_file)
+    list_from_file = func_vlans_in_fabricpath(list_from_file, username, pswd)
     func_list_to_file(list_from_file)
-   
+
+
    
 #    list_to_csv(list_of_dict)
 #    list_of_dict_new = add_items_to_port_list(list_of_po, username, pswd)

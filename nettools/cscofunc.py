@@ -383,11 +383,49 @@ def get_cli_sh_int_switchport(handler):
 
     return sp_list
 
+def get_cli_sh_int_switchport_nxos(handler):
+    '''
+    Returns list of switchport interfaces with parameters. One item of list is directory.
+    '''
+    sp_list = []
+    cli_param = "sh interface switchport"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('Name: ')      # split output into blocks of interfaces
+    for block in cli_out_split:
+        intstr = re.search(r"([A-Za-z0-9/.]+)\n", block)
+        if intstr:                                  # interface name was found, process the interface
+            name = intstr.group(1)
+            int_dict = {}
+            int_dict['int'] = conv_int_to_interface_name(name) # gi1/3/4 -> GigabitEthernet1/3/4
+            int_dict['switchport'] = find_regex_value_in_string(block, re.compile(r"Switchport:\s([A-Za-z]+)\n"))
+        
+            int_dict['oper_mode'] = find_regex_value_in_string(block, re.compile(r"Operational Mode:\s([A-Za-z\s]+)[\n\(]"))
+            int_dict['oper_mode'] = int_dict['oper_mode'].rstrip()      # get rid of spaces at the end of the string
+            int_dict['access_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Access Mode VLAN:\s([0-9]+).+\n"))
+            int_dict['trunk_native_mode_vlan'] = find_regex_value_in_string(block, re.compile(r"Trunking Native Mode VLAN:\s([0-9]+).+\n"))
+            int_dict['voice_vlan'] = find_regex_value_in_string(block, re.compile(r"Voice VLAN:\s([A-Za-z0-9]+)\n"))
+            tmps = find_regex_value_in_string(block, re.compile(r"Trunking VLANs Allowed:\s([A-Za-z0-9,\-\s]+)\n"))
+            vlanlist = process_raw_vlan_list(tmps)          # remove spaces, newlines
+            vlanlist = normalize_vlan_list(vlanlist)        # convert vlan ranges (i.e.5-8, ...) to list (5,6,7,8)
+            int_dict['trunk_vlans'] = vlanlist
+            sp_list.append(int_dict)
+
+    return sp_list
+
 def get_cli_sh_int_switchport_dict(handler):
     '''
     '''
     int_dict = {}
     int_list = get_cli_sh_int_switchport(handler)
+    for item in int_list:
+        int_dict[item['int']] = item
+    return int_dict
+
+def get_cli_sh_int_switchport_dict_nxos(handler):
+    '''
+    '''
+    int_dict = {}
+    int_list = get_cli_sh_int_switchport_nxos(handler)
     for item in int_list:
         int_dict[item['int']] = item
     return int_dict
@@ -421,9 +459,18 @@ def conv_int_to_interface_name(intname):
     '''
     Converts interface shortname to standartd name, i.e Gi1/1/1 to GigabitEthernet1/1/1
     '''
-    intname = intname.replace('Gi', 'GigabitEthernet')
-    intname = intname.replace('Te', 'TenGigabitEthernet')
-    intname = intname.replace('Po', 'Port-channel')
+    res = re.match(r"Gi[0-9].*", intname)
+    if res:
+        intname = intname.replace('Gi', 'GigabitEthernet')
+    res = re.match(r"Te[0-9].*", intname)
+    if res:
+        intname = intname.replace('Te', 'TenGigabitEthernet')
+    res = re.match(r"Po[0-9].*", intname)
+    if res:
+        intname = intname.replace('Po', 'Port-channel')
+    res = re.match(r"Eth[0-9].*", intname)
+    if res:
+        intname = intname.replace('Eth', 'Ethernet')
     return intname
 
 def get_cli_sh_cdp_neighbor(handler):
@@ -455,9 +502,33 @@ def get_cli_sh_cdp_neighbor(handler):
             cdp_list.append(int_dict)
     return cdp_list
 
+def get_cli_sh_vlan(handler):
+    '''
+    Returns VLAN table (list of dictionaries).
+    acc_int - ports where vlan is in access mode (column Ports in sh vlan)
+ 
+    '''
+    vlan_list = []
+    cli_param = "sh vlan"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    for line in cli_out_split:
+        # 10   vlan10                           active    Eth2/3, Eth2/4, Eth2/5
+        intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-]+)\s+([a-z]+)(\s+(.*))?$", line)
+        if intstr:
+            acc_vlan = intstr.group(5)
+            if acc_vlan:
+                acc_vlan = acc_vlan.replace(' ', '')         # delete spaces
+                intlist = acc_vlan.split(",")       # list VLANs
+            else:
+                intlist = []
+            vlan_entry = {'number':intstr.group(1), 'name':intstr.group(2), 'status':intstr.group(3), 'acc_int':intlist}
+            vlan_list.append(vlan_entry)
+    return vlan_list
+
 def get_cli_sh_vlan_plus(handler):
     '''
-    Returns VLAN table.
+    Returns VLAN table (list of dictionaries).
     ports - ports where vlan is active (column Ports in sh vlan id)
     acc_int - ports where vlan is in access mode (column Ports in sh vlan)
     Quite long processing when lot of Vlans ...
