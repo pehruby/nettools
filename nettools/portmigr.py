@@ -26,6 +26,9 @@ nxos_switch = []
 def func_convert_list(source_list):
     '''
     The function creates a list of list in which the inner list has always to entries.
+    :param source_list: 
+    :return: 
+    Version: 1.0
     '''
     new_dict = {}
     for element in source_list:
@@ -132,7 +135,12 @@ def get_nxos_pc_port_number(iface, pc_list):
     return '0'            # otherwise return 0
 
 def func_lines_from_csv_to_list(source_file):
-# Reads the source file (defined in variable 'file_name' in to a list
+    '''
+    Reads the source file (defined in variable 'file_name' in to a list
+    :param source_file: 
+    :return:
+    Version: 1.0
+    '''
     if os.path.isfile(source_file) == True and os.stat(source_file).st_size != 0:
         with open(source_file,'r') as file:
             reader = csv.reader(file)
@@ -146,7 +154,11 @@ def func_new_list_from_list(source_list):
     '''
     The function creates a list of dictionaries from a list.
     The Keys in each dictionary are 'sw1_name','sw2_name' and 'vpc_id'
+    :param source_list: 
+    :return: 
+    Version: 1.0
     '''
+    
     new_list = []
     for element in source_list:
         temp_dict = {'sw1_name': element[0], 'sw2_name': element[1], 'vpc_id': int(element[2])}
@@ -156,7 +168,22 @@ def func_new_list_from_list(source_list):
 
     return new_list
 
-def func_list_to_list_of_dict(source_list):
+def func_convert_list_to_dict(source_list):
+    '''
+    The function creates a list of list in which the inner list has always to entries.
+    :param source_list: 
+    :return: 
+    Version: 1.0
+    '''
+
+    new_list = {}
+    for element in source_list:
+        new_list.update({element[0]: element[1]})
+
+    return new_list
+
+
+def func_list_to_list_of_dict(source_list, switch_dict):
     '''
     Converts the list in a list of dictionaries with the follwing keys:
     reads the values for the keys sw_old, port_old, sw_new, port_new
@@ -164,7 +191,12 @@ def func_list_to_list_of_dict(source_list):
     ip_old_sw, ip_new_sw
     gets the following optional keys from the list nxos_switch if the old switch is a Nexus switch:
     vpc_id, sw_pair, ip_pair_sw
+    :param source_list: 
+    :param switch_dict: 
+    :return: 
+    Version: 1.0
     '''
+
     new_list = []
     for element in source_list:
         dict_temp = {"error":None,"warning":None}
@@ -178,7 +210,13 @@ def func_list_to_list_of_dict(source_list):
             dict_temp["sw_old"] = element[0].lower()
 # Conversion of switchname to IP address
             if dict_temp["sw_old"].startswith('de'):
-                dict_temp["ip_old_sw"] = switch_ip[dict_temp["sw_old"]]
+                if dict_temp['sw_old'] in switch_ip.keys():
+                    dict_temp["ip_old_sw"] = switch_ip[dict_temp["sw_old"]]
+                else:
+                    if dict_temp["error"] != None:
+                        dict_temp["error"].append(dict_temp['sw_old'] + ' not in List of Switch IP Adresses')
+                    else:
+                        dict_temp["error"] = [dict_temp['sw_old'] + ' not in List of Switch IP Adresses']
 # if the old switch is a nexus switch the pair_switch name and ip address and the vpc-id are added to the dictionary
                 for switch in nxos_switch:
                     if switch['sw1_name'] == dict_temp["sw_old"]:
@@ -194,23 +232,40 @@ def func_list_to_list_of_dict(source_list):
                     dict_temp["error"].append(element[0] + ' is not a valid switchname')
                 else:
                     dict_temp["error"] = [element[0] + ' is not a valid switchname']
-            dict_temp["port_old"] = element[1]
+#remove all characters right of the first number
+            position = re.search("\d", element[1])
+            if position:
+                dict_temp["port_old"] = element[1][position.start():]
             dict_temp["sw_new"] = element[2].lower()
-# Conversion of switchname to IP address including some input validation
             if dict_temp["sw_new"].startswith('de'):
 #                print ("starts with de")
                 if dict_temp["sw_new"].endswith('-1') or dict_temp["sw_new"].endswith('-2'):
-#                    print ("ends with -1 or -2")
-                    dict_temp["ip_new_sw"] = switch_ip[dict_temp["sw_new"]]
+#                   print ("ends with -1 or -2")
+                    None
                 else:
-#                    print ("does not end with -1 or -2")
-                    dict_temp["ip_new_sw"] = switch_ip[dict_temp["sw_new"]+'-1']
+#                   print ("does not end with -1 or -2")
+                    dict_temp['sw_new'] = dict_temp['sw_new']+'-1'
+                if dict_temp['sw_new'] in switch_ip.keys():
+                    dict_temp['ip_new_sw'] = switch_ip[dict_temp['sw_new']]
+                else:
+                    if dict_temp["error"] != None:
+                        dict_temp["error"].append(dict_temp['sw_new']+' not in List of Switch IP Adresses')
+                    else:
+                        dict_temp["error"] = [dict_temp['sw_new']+' not in List of Switch IP Adresses']
+# Check if target switch is correct target for old_switch
+                if dict_temp["error"] == None:
+                    if switch_dict[dict_temp['sw_old']] != dict_temp['sw_new']:
+                        dict_temp["error"] = [dict_temp['sw_new'] + ' is the wrong target switch. Target should be ' + switch_dict[dict_temp['sw_old']]]
+# Conversion of switchname to IP address including some input validation
             else:
                 if dict_temp["error"] != None:
                     dict_temp["error"].append(element[2]+' is not a valid switchname')
                 else:
                     dict_temp["error"] = [element[2]+' is not a valid switchname']
-            dict_temp["port_new"] = element[3]
+# remove all characters right of the first number
+            position = re.search("\d", element[3])
+            if position:
+                    dict_temp["port_new"] = element[3][position.start():]
 #            print ('Dictionary des Eintrags'+str(dict_temp))
             new_list.append(dict_temp)
 
