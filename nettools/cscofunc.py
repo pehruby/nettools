@@ -472,6 +472,23 @@ def conv_int_to_interface_name(intname):
     if res:
         intname = intname.replace('Eth', 'Ethernet')
     return intname
+def conv_interface_to_int_name(intname):
+    '''
+    Converts interface standartd name to interface shortname, i.e  GigabitEthernet1/1/1 to Gi1/1/1
+    '''
+    res = re.match(r"GigabitEthernet[0-9].*", intname)
+    if res:
+        intname = intname.replace('GigabitEthernet', 'Gi')
+    res = re.match(r"TenGigabitEthernet[0-9].*", intname)
+    if res:
+        intname = intname.replace('TenGigabitEthernet', 'Te')
+    res = re.match(r"Port-channel[0-9].*", intname)
+    if res:
+        intname = intname.replace('Port-channel', 'Po')
+    res = re.match(r"Ethernet[0-9].*", intname)
+    if res:
+        intname = intname.replace('Ethernet', 'Eth')
+    return intname
 
 def get_cli_sh_cdp_neighbor(handler):
     '''
@@ -603,6 +620,10 @@ def get_cli_sh_etherchannel_summary(handler):
 
 def get_cli_sh_etherchannel_summary_nxos(handler):
     '''
+    Returns list of dictionaries
+    pc_number - port-channel number
+    int-list
+
     '''
 
     pc_list = []
