@@ -388,10 +388,13 @@ def func_port_ch_switch2(source_list):
 def func_list_to_file(source_list):
     '''
     The function creates a output file in csv format which contains the values for all keys in the variable key for each dictionary from the list of dictionaries 'source_list'
+    :param source_list: 
+    :return none: 
+    Version 1.0
     '''
-    keys = ('sw_old','port_old','ip_old_sw','port_ch_old','sw_new','port_new','ip_new_sw','port_ch_new','error','warning')
+    keys = ('sw_new','port_new','ip_new_sw','port_ch_new','sw_mode','vlan_list','native_vlan','sw_old','port_old','ip_old_sw','port_ch_old','error','warning')
     target_file = open(output_file, 'w')
-    target_file.write('sw_old;port_old;ip_old_sw;port_ch_old;sw_new;port_new;ip_new_sw;port_ch_new;error;warning\n')
+    target_file.write('sw_new;port_new;ip_new_sw;port_ch_new;sw_mode;vlan_list;native_vlan;sw_old;port_old;ip_old_sw;port_ch_old;error;warning\n')
     for line in source_list:
         for key in keys:
             if key in line.keys():
@@ -400,7 +403,7 @@ def func_list_to_file(source_list):
                 target_file.write(';')
         target_file.write ('\n')
     target_file.close()
-
+    
 def convert_pc_list_to_dict(pc_list):
     '''
     Converts list of portchannels into dictionary
@@ -491,7 +494,7 @@ def func_change_mapped_vlans(list_from_file):
     If a change is done there will be an entry in vlans_trans and in warning 
     :param list_from_file: 
     :return list_from_file:
-    Version: 1.1
+    Version: 1.2
     '''
     mapping_list = [{'old_vlan': 400, 'new_vlan': 500}, {'old_vlan': 405, 'new_vlan': 505}]
 
@@ -503,9 +506,9 @@ def func_change_mapped_vlans(list_from_file):
                     if vlan == item['old_vlan']:
                         element['vlan_list'][index] = item['new_vlan']
                         if element['warning'] == None:
-                            element['warning'] == [str(vlan) + ' is a mapped vlan']
+                            element['warning'] = ['Changed VLAN '+str(vlan)+' to Vlan '+str(item['new_vlan'])]
                         else:
-                            element['warning'].append(str(vlan) + ' is a mapped vlan')
+                            element['warning'].append('Changed VLAN '+str(vlan)+' to Vlan '+str(item['new_vlan']))
                         if 'vlans_trans' in element.keys():
                             element['vlans_trans'].append(item)
                         else:
@@ -515,9 +518,9 @@ def func_change_mapped_vlans(list_from_file):
                 for item in mapping_list:
                     if element['native_vlan'] == item['old_vlan']:
                         if element['warning'] == None:
-                            element['warning'] = ['The native VLAN is a mapped vlan']
+                            element['warning'] = ['Native VLAN '+str(element['native_vlan'])+' changed to VLAN '+str(item['new_vlan'])]
                         else:
-                            element['warning'].append('The native VLAN is a mapped vlan')
+                            element['warning'].append('Native VLAN '+str(element['native_vlan'])+' changed to VLAN '+str(item['new_vlan']))
                         element['native_vlan'] = item['new_vlan']
     return list_from_file
 
@@ -566,19 +569,26 @@ def func_ports_in_list(sw_name,port_list,list_from_file):
     the function checks if all the ports in the port_list of the switch with the name sw_name are in the input file
     :param sw_name: 
     :param port_list: 
-    :return: 
+    :param list_from_file: 
+    :return all_in:
+    Version: 1.1
     '''
     all_in = True
     for port in port_list:
+# Reduce the port to the portnumber
+        position = re.search("\d", port)
+        port = port[position.start():]
         found = False
-#        print ('new port '+str(port))
         for element in list_from_file:
-            if element['sw_old'] == sw_name and element['port_old'] == port:
-#                print ('Port found')
-                found = True
+# When there was already an error in this line of the input list this line will be ignored
+            if element['noerror']:
+# Reduce the port to the portnumber
+                position = re.search("\d", element['port_old'])
+                port_old = element['port_old'][position.start():]
+                if element['sw_old'] == sw_name and port_old == port:
+                    found = True
         if found == False:
             all_in = False
-
     return all_in
 
 def func_po_ch_all_in(source_list,list_from_file):
