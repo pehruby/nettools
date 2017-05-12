@@ -414,6 +414,7 @@ def get_cli_sh_int_switchport_nxos(handler):
 
 def get_cli_sh_int_switchport_dict(handler):
     '''
+    Get dictionary where key is interface name and value are switchport parameters (in dictionary)
     '''
     int_dict = {}
     int_list = get_cli_sh_int_switchport(handler)
@@ -423,6 +424,7 @@ def get_cli_sh_int_switchport_dict(handler):
 
 def get_cli_sh_int_switchport_dict_nxos(handler):
     '''
+    Get dictionary where key is interface name and value are switchport parameters (in dictionary)
     '''
     int_dict = {}
     int_list = get_cli_sh_int_switchport_nxos(handler)
@@ -666,6 +668,30 @@ def get_cli_sh_vpc_nxos(handler):
             int_dict['status'] = intstr.group(3)
             vpc_list.append(int_dict)
     return vpc_list
+
+def get_cli_sh_int_status(handler):
+    '''
+    '''
+    int_stat = []
+    cli_param = "sh interface status"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    for line in cli_out_split:
+        # Eth1/2        c6506_hra_vss_2/3/ connected trunk     full    10G     10Gbase-SR
+        int_dict = {}
+        intstr = re.match(r"([A-Za-z0-9/]+)\s+(..................)\s+([A-Za-z]+)\s+([A-Za-z0-9]+)\s+([A-Za-z]+)\s+([A-Za-z0-9]+)\s+(.*)$", line)
+        if intstr:
+            if intstr.group(1) == 'Port':  # line with column names
+                continue
+            int_dict['port'] = intstr.group(1)
+            int_dict['name'] = intstr.group(2).rstrip() # remove trailing spaces
+            int_dict['status'] = intstr.group(3)
+            int_dict['vlan'] = intstr.group(4)
+            int_dict['duplex'] = intstr.group(5)
+            int_dict['speed'] = intstr.group(6)
+            int_dict['type'] = intstr.group(7)
+            int_stat.append(int_dict)
+    return int_stat
 
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     '''
