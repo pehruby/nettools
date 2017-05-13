@@ -89,6 +89,7 @@ def func_add_items_to_port_list(portlist, username, pswd):
                 if item['error'] == None:
                     item['error'] = []
                 item['error'].append("Unable to connect")       # add error enrty into list
+                item['noerror'] = False
                 continue        # process next item
             cli_param = "sh interface description"
             sh_int_desc_dict[ip_of_switch] = net_connect.send_command(cli_param)       
@@ -104,6 +105,7 @@ def func_add_items_to_port_list(portlist, username, pswd):
             if item['error'] == None:
                 item['error'] = []
             item['error'].append("Unable to transform interface name")       # add error enrty into list    
+            item['noerror'] = False
             continue        # process next item
         item['port_old'] = full_int_name
         if ip_of_switch not in switch_port_dict.keys():
@@ -122,6 +124,7 @@ def func_add_items_to_port_list(portlist, username, pswd):
                 item['port_ch_old'] = pcnr
             else:
                 item['error'].append('port_ch_old number not found')
+                item['noerror'] = False
         else:       # IOS
             po_name = switch_port_dict[ip_of_switch][iface]['bundle_member'] # portchannel name (with Po in name)
             pcnr = po_name.replace('Po','')
@@ -797,13 +800,17 @@ def func_check_port_status(ip_addr, port, username, password):
     '''
     '''
 
-    net_connect = cli_open_session(ip_addr, username, password)    
+    net_connect = cli_open_session(ip_addr, username, password)
+    if not net_connect:
+        print("Unable to connect to device " + ip_addr)
+        return 3   
     port_stat = cscofunc.get_cli_sh_int_status(net_connect)
     for item in port_stat:
         if port in item['port']:            # is port substring of item['port'], i.e. 3/11 is substr of Eth3/11
             if item['status'] == 'connected':
                 return 1            # port is used
-            if item['status'] == 'notconnec' or item['status'] == 'disabled' or item['status'] == 'sfpAbsent':
+            # if item['status'] == 'notconnec' or item['status'] == 'disabled' or item['status'] == 'sfpAbsent' or item['status'] == 'xcvrInval':
+            if item['status'] in ('notconnec','disabled','sfpAbsent','xcvrInval') :
                 return 0            # port is not used
             return 3                # status value is unexpected ... error
     return 2            # port not found, port is not valid
@@ -849,7 +856,6 @@ def main():
     if pswd == '':
         pswd = getpass.getpass('Password:')
 
-    # port_status = func_check_port_status('10.106.1.100', '1/28', username, pswd)
     
     list_of_switch_ips = func_lines_from_csv_to_list(file_name_sip) # list of device names and related IP addresses
     switch_ip = func_convert_list_to_dict(list_of_switch_ips) # dictionary device name : IP address
@@ -876,28 +882,7 @@ def main():
     list_from_file = func_assign_new_pc(list_of_po_ports,list_of_pcs_in_use,list_from_file)
     func_list_to_file(list_from_file)
 
-'''
-    list_of_switch_ips = func_lines_from_csv_to_list(file_name_sip)
-    switch_ip = func_convert_list_to_dict(list_of_switch_ips)
-    list_of_vpcs = func_lines_from_csv_to_list(file_name_nxos)
-    nxos_switch = func_new_list_from_list(list_of_vpcs)
-    list_of_switch_old_to_new = func_lines_from_csv_to_list(file_name_old_new)
-    list_old_to_new = func_convert_list_to_dict(list_of_switch_old_to_new)
-
-    list_from_file = func_lines_from_csv_to_list(file_name)
-    list_from_file = func_list_to_list_of_dict(list_from_file,list_old_to_new)
-    test_list = func_po_ch_all_in(test_list,list_from_file)
-    list_from_file = func_write_po_error(test_list,list_from_file)
-    list_from_file = func_change_mapped_vlans(test_list_from_file)
-    list_from_file = func_vlans_in_fabricpath(test_list_from_file,test_vlan_list)
-    list_of_pcs_in_use = func_create_vpc_pc_list(list_from_file, nxos_switch, switch_ip)
-'''
    
-#    list_to_csv(list_of_dict)
-#    list_of_dict_new = func_add_items_to_port_list(list_of_po, username, pswd)
-    #print (list_of_dict_new)
-    #json_output = json.dumps(list_of_dict_new, separators=(',', ':'), indent=4)
-    #print(json_output)
 
 if __name__ == '__main__':
     main()
