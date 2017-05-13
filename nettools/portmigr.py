@@ -5,21 +5,20 @@ import sys
 import getpass
 import getopt
 import re
-import json
-from time import sleep
+import yaml
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException
 from paramiko.ssh_exception import SSHException
 
 import cscofunc
 
-file_name = "developtests/Ports.csv"
-file_name_sip = "developtests/switch_ip.csv"
-file_name_nxos = "developtests/nxos.csv"
-file_name_old_new = 'developtests/sw_old_new.csv'
+#file_name = "developtests/Ports.csv"
+#file_name_sip = "developtests/switch_ip.csv"
+#file_name_nxos = "developtests/nxos.csv"
+#file_name_old_new = 'developtests/sw_old_new.csv'
 
 
-output_file = "developtests/Output.csv"
+#output_file = "developtests/Output.csv"
 
 switch_ip = []
 nxos_switch = []
@@ -489,10 +488,10 @@ def get_switchnames_for_vpcid(vpcid):
             return (item['sw1_name'], item['sw2_name'])   # Return names of two switches
     return ('','')          # Error, devices were not found
 
-def func_list_to_file(source_list):
+def func_list_to_file(source_list, output_file):
     '''
     The function creates a output file in csv format which contains the values for all keys in the variable key for each dictionary from the list of dictionaries 'source_list'
-    :param source_list: 
+    :param source_list, output_file: 
     :return none: 
     Version 1.0
     '''
@@ -814,7 +813,54 @@ def func_check_port_status(ip_addr, port, username, password):
                 return 0            # port is not used
             return 3                # status value is unexpected ... error
     return 2            # port not found, port is not valid
-            
+
+def func_read_cfg_file(config_file):
+    '''
+    Reads configuration file
+    ''' 
+    if os.path.isfile(config_file):
+        try:
+            with open(config_file) as data_file:
+                config_yaml = yaml.load(data_file.read())
+        except IOError:
+            print("Unable to read the file", config_file)
+            exit(1)
+    else:
+        print("Cannot find the file", config_file)
+        exit(1)   
+
+    return config_yaml 
+
+def func_cfg_file_sanity_checks(config_dict):
+    '''
+    Checks if files in config dict exist, etc ...
+    '''
+
+    return_dict = {}
+    if 'path' not in config_dict:
+        path_to_cfgf = ''
+    else:
+        path_to_cfgf =  config_dict['path'] + '\\'
+    
+    if 'filenames' not in config_dict:
+        return_dict['passed'] = False
+    if 'ports' not in config_dict['filenames'] or 'sw_old_new' not in config_dict['filenames'] or 'switchip' not in config_dict['filenames'] or 'nxos' not in config_dict['filenames']:
+        return_dict['passed'] = False
+    portsf = path_to_cfgf+config_dict['filenames']['ports']
+    nxosf = path_to_cfgf+config_dict['filenames']['nxos']
+    switchipf = path_to_cfgf+config_dict['filenames']['switchip']
+    sw_old_newf = path_to_cfgf+config_dict['filenames']['sw_old_new']
+
+    for file in (portsf, nxosf, switchipf, sw_old_newf):
+        if not os.path.isfile(file):
+            return_dict['passed'] = False
+    return_dict['passed'] = True
+    return_dict['portsf'] = portsf
+    return_dict['nxosf'] = nxosf
+    return_dict['switch_ipf'] = switchipf
+    return_dict['sw_old_newf'] = sw_old_newf
+    return_dict['output'] = path_to_cfgf+config_dict['filenames']['output']
+    return return_dict
 
 def main():
 
@@ -828,11 +874,12 @@ def main():
     -h,     --help                      display help
     -u,     --username                  username
     -p,     --password                  password, optional
+    -c,     --cfgfile                   conmfiguration file
     '''
     argv = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(argv, "hp:u:", [ "help" "password=", "username="])
+        opts, args = getopt.getopt(argv, "hp:u:c:", [ "help" "password=", "username=", "cfgfile="])
     except getopt.GetoptError:
         print(usage_str)
         sys.exit(2)
@@ -845,12 +892,31 @@ def main():
             username = arg
         elif opt in ("-p", "--password"):
             pswd = arg
+        elif opt in ("-c", "--cfgfile"):
+            cfgfile = arg
 
 
     # sanity checks
     if not username:
         print("Username is not specified")
         sys.exit(2)
+    if not cfgfile:
+        print("Configuration file is not specified")
+        sys.exit(2)
+
+    
+    cfg_dict = func_read_cfg_file(cfgfile)
+    cfgfiles_dict = func_cfg_file_sanity_checks(cfg_dict)
+    if not cfgfiles_dict['passed']:
+        print("Something in config file is wrong ...")
+        sys.exit(2) 
+
+
+    file_name = cfgfiles_dict['portsf']
+    file_name_sip = cfgfiles_dict['switch_ipf']
+    file_name_nxos = cfgfiles_dict['nxosf']
+    file_name_old_new = cfgfiles_dict['sw_old_newf']
+    output_file = cfgfiles_dict['output']
 
 
     if pswd == '':
@@ -880,7 +946,7 @@ def main():
     list_of_pcs_in_use = func_add_used_pcs(list_of_pcs_in_use, username, pswd) # list of used PC by two new switches
 
     list_from_file = func_assign_new_pc(list_of_po_ports,list_of_pcs_in_use,list_from_file)
-    func_list_to_file(list_from_file)
+    func_list_to_file(list_from_file, output_file)
 
    
 
