@@ -493,7 +493,7 @@ def func_list_to_file(source_list, output_file):
     The function creates a output file in csv format which contains the values for all keys in the variable key for each dictionary from the list of dictionaries 'source_list'
     :param source_list, output_file: 
     :return none: 
-    Version 1.0
+    Version 1.1
     '''
     keys = ('sw_new','port_new','ip_new_sw','port_ch_new','sw_mode','vlan_list','native_vlan','sw_old','port_old','ip_old_sw','port_ch_old','error','warning')
     target_file = open(output_file, 'w')
