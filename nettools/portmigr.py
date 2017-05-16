@@ -335,11 +335,14 @@ def func_list_of_port_ch(devices,source_list,typ):
 
 
 def func_port_ch_switch(source_list):
-    '''
+    """
     The function return a list containing two lists of dictionaries the first list for all IOS switches and the second for all NXOS switches.
     In the ios list is an entry for each switch and all interessting port-channel of the switch
     In the nxos list is an entry for each vpc_id and all interessting port-channel of the vpc
-    '''
+    :param source_list: 
+    :return new_list: 
+    Version 1.1
+    """
     list_of_nxos_vpcs = []
     list_of_ios_switches = []
     for element in source_list:
@@ -352,16 +355,12 @@ def func_port_ch_switch(source_list):
             else:
                 if element['sw_old'] not in list_of_ios_switches:
                     list_of_ios_switches.append(element['sw_old'])
-#    print (list_of_nxos_vpcs)
-#    print (list_of_ios_switches)
     list_of_port_channels = func_list_of_port_ch(list_of_nxos_vpcs,source_list,'vpc_id')
-    new_list = []
-    new_list.append(list_of_port_channels)
+    new_list = [list_of_port_channels]
     list_of_port_channels = func_list_of_port_ch(list_of_ios_switches,source_list,'sw_old')
     new_list.append(list_of_port_channels)
-#    print (new_list)
-
     return new_list
+
 
 def func_port_ch_switch2(source_list):
     '''
@@ -560,31 +559,33 @@ def get_vlan_list_of_switch(device_ip, username, password):
 
 
 def func_vlans_in_fabricpath(list_from_file, username, pswd):
-    '''
+    """
     This function checks if all vlans from the variabl list_from_file are in a variable vlan_list
     If not the function will fill the key error
     :param list_from_file: 
+    :param username: 
+    :param pswd: 
     :return list_from_file: 
-    Version: 1.1
-    '''
+    Version: 1.2
+    """
     for element in list_from_file:
         if element['noerror']:
-            vlan_list = get_vlan_list_of_switch(element['ip_new_sw'], username, pswd) 
+            vlan_list = get_vlan_list_of_switch(element['ip_new_sw'], username, pswd)
             for vlan in element['vlan_list']:
                 if vlan not in vlan_list:
                     element['noerror'] = False
                     if element['error'] == None:
-                        element['error'] == [str(vlan)+' is not on the new switch']
+                        element['error'] = [str(vlan)+' is not on the new switch']
                     else:
                         element['error'].append(str(vlan)+' is not on the new switch')
             if element['sw_mode'] == 'trunk':
                 if element['native_vlan'] not in vlan_list:
                     if 'warning' not in element.keys() or element['warning'] == None:
-                        element['warning'] == [str(element['native_vlan']) + ' is not on the new switch']
+                        element['warning'] = [str(element['native_vlan']) + ' is not on the new switch']
                     else:
                         element['warning'].append(str(element['native_vlan']) + ' is not on the new switch')
     return list_from_file
-
+    
 def func_ports_in_list(sw_name,port_list,list_from_file):
     '''
     the function checks if all the ports in the port_list of the switch with the name sw_name are in the input file
@@ -592,7 +593,7 @@ def func_ports_in_list(sw_name,port_list,list_from_file):
     :param port_list: 
     :param list_from_file: 
     :return all_in:
-    Version: 1.1
+    Version: 1.3
     '''
     all_in = True
     for port in port_list:
@@ -608,7 +609,7 @@ def func_ports_in_list(sw_name,port_list,list_from_file):
                 port_old = element['port_old'][position.start():]
                 if element['sw_old'] == sw_name and port_old == port:
                     found = True
-        if found == False:
+        if not found:
             all_in = False
     return all_in
 
@@ -647,17 +648,18 @@ def func_find_ports_of_pc(sw_name,port_list,list_from_file):
     return list_from_file
 
 def func_write_po_error(source_list,list_from_file):
-    '''
+    """
     The function searches for incomplete port-channels and if it finds one forwards the information of the switchname(s) and the associated port_list to the function func_find_ports_of_pc
     :param source_list: 
-    :return: 
-    '''
+    :param list_from_file: 
+    :return list_from_file: 
+    Version 1.1
+    """
     for item in source_list:
-        if item['all_in'] == False:
+        if not item['all_in']:
             list_from_file = func_find_ports_of_pc(item['sw_old'], item['ports'],list_from_file)
             if 'ports2' in item.keys():
                 list_from_file = func_find_ports_of_pc(item['sw_old2'], item['ports2'],list_from_file)
-
     return list_from_file
 
 def func_add_used_pcs(listofpcs, username, password):
