@@ -111,7 +111,13 @@ def func_add_items_to_port_list(portlist, username, pswd):
             switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict(net_connect)
         iface = item['port_old']
         item['sw_mode'] = switch_port_dict[ip_of_switch][iface]['oper_mode']            # add new entries for switch which is being processeed
-        if item['sw_mode'] == 'access': # port is access, add access vlan into vlan list
+        if item['sw_mode'] == 'down':
+            if item['error'] == None:
+                item['error'] = []
+            item['error'].append("Port down")       # add error enrty into list
+            item['noerror'] = False
+            continue        # process next item
+        if item['sw_mode'] == 'access' or item['sw_mode'] == 'static access': # port is access, add access vlan into vlan list
             item['vlan_list'] = []
             item['vlan_list'].append(switch_port_dict[ip_of_switch][iface]['access_mode_vlan'])
         else:       # port is trunk, add trunk vlan list
