@@ -533,8 +533,36 @@ def get_cli_sh_vlan(handler):
     cli_out_split = cli_output.split('\n')      # split output into lines
     for line in cli_out_split:
         # 10   vlan10                           active    Eth2/3, Eth2/4, Eth2/5
+        intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-/\.]+)\s+([a-z]+)(\s+(.*))?$", line)
+        if intstr:
+            acc_vlan = intstr.group(5)
+            if acc_vlan:
+                acc_vlan = acc_vlan.replace(' ', '')         # delete spaces
+                intlist = acc_vlan.split(",")       # list VLANs
+            else:
+                intlist = []
+            vlan_entry = {'number':intstr.group(1), 'name':intstr.group(2), 'status':intstr.group(3), 'acc_int':intlist}
+            vlan_list.append(vlan_entry)
+    return vlan_list
+
+def get_cli_sh_vlan_nxos(handler):
+    '''
+    Returns VLAN table (list of dictionaries).
+    acc_int - ports where vlan is in access mode (column Ports in sh vlan)
+
+    Just copy of get_cli_sh_vlan. I have to rewrite it
+ 
+    '''
+    vlan_list = []
+    new_vlan_found = False
+    cli_param = "sh vlan"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    for line in cli_out_split:
+        # 10   vlan10                           active    Eth2/3, Eth2/4, Eth2/5
         intstr = re.match(r"([0-9]+)\s+([A-Za-z0-9_\-]+)\s+([a-z]+)(\s+(.*))?$", line)
         if intstr:
+            new_vlan_found = True
             acc_vlan = intstr.group(5)
             if acc_vlan:
                 acc_vlan = acc_vlan.replace(' ', '')         # delete spaces
