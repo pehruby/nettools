@@ -743,16 +743,24 @@ def get_cli_sh_int_description_dict(handler):
     cli_param = "sh interface description"
     cli_output = handler.send_command(cli_param)
     cli_out_split = cli_output.split('\n')      # split output into lines
-    cli_out_split = cli_out_split[1:]           # get rid of first two lines
     int_dict = {}
     for line in cli_out_split:
+        # IOS
         #Lo3                            admin down     down     management o2, nnmmlan
         #Po1                            up             up       ## MEC from Po1 to c5596_hra_1 and c5596_hra_2 ##
         #Po3                            down           down
-        intstr = re.match(r"([A-Za-z0-9\/\.]+)\s+(([A-Za-z]+)(\s[A-Za-z]+)?)\s+([A-Za-z]+)\s+(.*)$", line)
+        #
+        # NX-OS
+        #Eth1/26       eth    10G     HP VCE 101 #ESX-X2-SEC-INT
+        intstr = re.match(r"([A-Za-z0-9\/\.]+)\s+(([A-Za-z]+)(\s[A-Za-z]+)?)\s+([A-Za-z0-9]+)\s+(.*)$", line)
         if intstr: 
             interface = intstr.group(1)
-            int_dict[intstr.group(1)] = {'descr':intstr.group(6)}
+            if interface == 'Port' or interface == 'Interface':     # column names
+                continue
+            descr = intstr.group(6)
+            if descr == '--':               # NX-OS, empty description
+                descr = ''
+            int_dict[intstr.group(1)] = {'descr':descr}
     return int_dict
 
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
