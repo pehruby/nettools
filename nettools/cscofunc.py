@@ -473,6 +473,12 @@ def conv_int_to_interface_name(intname):
     res = re.match(r"Eth[0-9].*", intname)
     if res:
         intname = intname.replace('Eth', 'Ethernet')
+    res = re.match(r"Vl[0-9].*", intname)
+    if res:
+        intname = intname.replace('Vl', 'Vlan')
+    res = re.match(r"Lo[0-9].*", intname)
+    if res:
+        intname = intname.replace('Lo', 'Loopback')
     return intname
 def conv_interface_to_int_name(intname):
     '''
@@ -490,6 +496,12 @@ def conv_interface_to_int_name(intname):
     res = re.match(r"Ethernet[0-9].*", intname)
     if res:
         intname = intname.replace('Ethernet', 'Eth')
+    res = re.match(r"Vlan[0-9].*", intname)
+    if res:
+        intname = intname.replace('Vlan', 'Vl')
+    res = re.match(r"Loopback[0-9].*", intname)
+    if res:
+        intname = intname.replace('Loopback', 'Lo')
     return intname
 
 def get_cli_sh_cdp_neighbor(handler):
@@ -712,7 +724,7 @@ def get_cli_sh_int_status(handler):
             if intstr.group(1) == 'Port':  # line with column names
                 continue
             int_dict['port'] = intstr.group(1)
-            int_dict['name'] = intstr.group(2).rstrip() # remove trailing spaces
+            int_dict['name'] = intstr.group(2).rstrip() # remove trailing spaces, it's shortened (18 char only) version of Description field
             int_dict['status'] = intstr.group(3)
             int_dict['vlan'] = intstr.group(4)
             int_dict['duplex'] = intstr.group(5)
@@ -720,6 +732,28 @@ def get_cli_sh_int_status(handler):
             int_dict['type'] = intstr.group(7)
             int_stat.append(int_dict)
     return int_stat
+
+def get_cli_sh_int_description_dict(handler):
+    """
+    Returns dictionary of interface_name : {descr: 'Description'}
+    :param handler: 
+    :return int_dict: 
+    """
+    int_stat = []
+    cli_param = "sh interface description"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    cli_out_split = cli_out_split[1:]           # get rid of first two lines
+    int_dict = {}
+    for line in cli_out_split:
+        #Lo3                            admin down     down     management o2, nnmmlan
+        #Po1                            up             up       ## MEC from Po1 to c5596_hra_1 and c5596_hra_2 ##
+        #Po3                            down           down
+        intstr = re.match(r"([A-Za-z0-9\/\.]+)\s+(([A-Za-z]+)(\s[A-Za-z]+)?)\s+([A-Za-z]+)\s+(.*)$", line)
+        if intstr: 
+            interface = intstr.group(1)
+            int_dict[intstr.group(1)] = {'descr':intstr.group(6)}
+    return int_dict
 
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     '''
