@@ -464,22 +464,33 @@ def conv_int_to_interface_name(intname):
     res = re.match(r"Gi[0-9].*", intname)
     if res:
         intname = intname.replace('Gi', 'GigabitEthernet')
+        return intname
     res = re.match(r"Te[0-9].*", intname)
     if res:
         intname = intname.replace('Te', 'TenGigabitEthernet')
+        return intname
+    res = re.match(r"Fa[0-9].*", intname)
+    if res:
+        intname = intname.replace('Fa', 'FastEthernet')
+        return intname
     res = re.match(r"Po[0-9].*", intname)
     if res:
         intname = intname.replace('Po', 'Port-channel')
+        return intname
     res = re.match(r"Eth[0-9].*", intname)
     if res:
         intname = intname.replace('Eth', 'Ethernet')
+        return intname
     res = re.match(r"Vl[0-9].*", intname)
     if res:
         intname = intname.replace('Vl', 'Vlan')
+        return intname
     res = re.match(r"Lo[0-9].*", intname)
     if res:
         intname = intname.replace('Lo', 'Loopback')
-    return intname
+        return intname
+    return "Error"
+    
 def conv_interface_to_int_name(intname):
     '''
     Converts interface standartd name to interface shortname, i.e  GigabitEthernet1/1/1 to Gi1/1/1
@@ -487,22 +498,32 @@ def conv_interface_to_int_name(intname):
     res = re.match(r"GigabitEthernet[0-9].*", intname)
     if res:
         intname = intname.replace('GigabitEthernet', 'Gi')
+        return intname
     res = re.match(r"TenGigabitEthernet[0-9].*", intname)
     if res:
         intname = intname.replace('TenGigabitEthernet', 'Te')
+        return intname
+    res = re.match(r"FastEthernet[0-9].*", intname)
+    if res:
+        intname = intname.replace('FastEthernet', 'Fa')
+        return intname
     res = re.match(r"Port-channel[0-9].*", intname)
     if res:
         intname = intname.replace('Port-channel', 'Po')
+        return intname
     res = re.match(r"Ethernet[0-9].*", intname)
     if res:
         intname = intname.replace('Ethernet', 'Eth')
+        return intname
     res = re.match(r"Vlan[0-9].*", intname)
     if res:
         intname = intname.replace('Vlan', 'Vl')
+        return intname
     res = re.match(r"Loopback[0-9].*", intname)
     if res:
         intname = intname.replace('Loopback', 'Lo')
-    return intname
+        return intname
+    return "Error"
 
 def get_cli_sh_cdp_neighbor(handler):
     '''
