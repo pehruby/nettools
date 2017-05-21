@@ -1,3 +1,6 @@
+
+# pylint: disable=C0301, C0103, C0303
+
 import csv
 import os
 
@@ -79,16 +82,16 @@ def cli_open_session(ip, username, pswd):
     return net_connect
 
 def func_add_items_to_port_list(portlist, username, pswd):
-    '''
+    """
     Reads needed items from target switch (ssh connection) and add it to dictionary
-    Input:
-        portlist - list of dictionaries
-        username, pswd - credentials for ssh login
-    Output:
-        potrlist - list of dictionaries with new kews added to the dictionary
-    '''
-    switch_port_dict = {}       # dictionary where key is switch IP and value is dictionary of interface switchport parameters 
-    switch_port_desc_dict = {}       # dictionary where key is IP of the switch and value is port description, 
+
+    :param portlist: list of dictionaries
+    :param username: for connection to devices specified in portlist
+    :param pswd: password
+    :return potrlist: list of dictionaries with new kews added to the dictionary
+    """
+    switch_port_dict = {}       # dictionary where key is switch IP and value is dictionary of interface switchport parameters
+    switch_port_desc_dict = {}       # dictionary where key is IP of the switch and value is port description,
     for item in portlist:       # process all items in list
         if item['error'] != None:
             continue                # if there is already error in this item don't process it
@@ -146,7 +149,7 @@ def func_add_items_to_port_list(portlist, username, pswd):
                 item['noerror'] = False
         else:       # IOS
             po_name = switch_port_dict[ip_of_switch][iface]['bundle_member'] # portchannel name (with Po in name)
-            pcnr = po_name.replace('Po','')
+            pcnr = po_name.replace('Po', '')
             item['port_ch_old'] = pcnr
 
 
@@ -452,14 +455,16 @@ def convert_pc_list_to_dict(pc_list):
     return new_dict
 
 def func_create_dict_with_pc_ports(big_list, dev_pc_list, username, password):
-    '''
+    """
     Creates list of dictionaries. Each dictionary contains following keys:
-    sw_old - name of the swich
-    port_ch_old - name of portchannel (ie. Po33)
-    ports - list of ports in port_ch_old
-    sw_old2 - (NXOS only)
-    ports2 - (NXOS only)
-    '''
+    
+    :param sw_old: name of the swich
+    :param port_ch_old: name of portchannel (ie. Po33)
+    :param ports: list of ports in port_ch_old
+    :param sw_old2: (NXOS only)
+    :param ports2: (NXOS only)
+    :return list_of_dict:
+    """
     list_of_dict = []
     for item in dev_pc_list:
         if 'name' in item.keys():      # it is IOS device
