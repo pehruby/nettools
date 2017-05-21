@@ -47,6 +47,19 @@ def int_number_to_name(sh_int_des_output, number):
         fullname = cscofunc.conv_int_to_interface_name(intstr.group(1)) # Gi -> GigabitEthernet ,..
         return fullname
     return "Error"
+
+def int_number_to_name2(switch_port_dict, number):
+    """
+    Transforms interface number to valid name, i.e 1/3/4 to Te1/3/4 by finding the proper key in switch_port_dict
+    """
+
+    int_types_list = ['GigabitEthernet', 'TenGigabitEthernet', 'Port-channel', 'Ethernet', 'Vlan', 'Loopback']
+
+    for int_type in int_types_list:
+        if int_type+number in switch_port_dict:
+            return int_type+number
+    return "Error"
+
 def cli_open_session(ip, username, pswd):
     '''
     Open SSH session to IP address
@@ -75,14 +88,14 @@ def func_add_items_to_port_list(portlist, username, pswd):
         potrlist - list of dictionaries with new kews added to the dictionary
     '''
     switch_port_dict = {}       # dictionary where key is switch IP and value is dictionary of interface switchport parameters 
-    sh_int_desc_dict = {}       # dictionary where key is IP of the switch and value is 'sh interface desc'
+    switch_port_desc_dict = {}       # dictionary where key is IP of the switch and value is port description, 
     for item in portlist:       # process all items in list
         if item['error'] != None:
             continue                # if there is already error in this item don't process it
         ip_of_switch = item['ip_old_sw']    # ip of switch we are going to collect informations from
         print("\nProcessing device:", ip_of_switch)
 
-        if ip_of_switch not in sh_int_desc_dict.keys(): # do we have alredy needed entry for this switch<
+        if ip_of_switch not in switch_port_desc_dict.keys(): # do we have alredy needed entry for this switch<
             net_connect = cli_open_session(ip_of_switch, username, pswd)    # connect to switch
             if not net_connect:         # unable to connect
                 if item['error'] == None:
@@ -90,8 +103,7 @@ def func_add_items_to_port_list(portlist, username, pswd):
                 item['error'].append("Unable to connect")       # add error enrty into list
                 item['noerror'] = False
                 continue        # process next item
-            cli_param = "sh interface description"
-            sh_int_desc_dict[ip_of_switch] = net_connect.send_command(cli_param)       
+            switch_port_desc_dict[ip_of_switch] = cscofunc.get_cli_sh_int_description_dict(net_connect)
             if ip_of_switch not in switch_port_dict.keys():
                 if 'vpc_id' in item:    # test if it is NX-OS
                     switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict_nxos(net_connect)
@@ -99,14 +111,16 @@ def func_add_items_to_port_list(portlist, username, pswd):
                 else:
                     switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict(net_connect)
             net_connect.disconnect()        # disconnect from the switch
-        full_int_name = int_number_to_name(sh_int_desc_dict[ip_of_switch], item['port_old'])    # 1/3/4 -> GigabitEthernet1/3/4
+        full_int_name = int_number_to_name2(switch_port_dict[ip_of_switch], item['port_old'])    # 1/3/4 -> GigabitEthernet1/3/4
         if full_int_name == 'Error':
             if item['error'] == None:
                 item['error'] = []
             item['error'].append("Unable to transform interface name")       # add error enrty into list    
             item['noerror'] = False
             continue        # process next item
+        short_int_name = cscofunc.conv_interface_to_int_name(full_int_name)     # transform long int name to short version, i.e GigabitEthernet1/3/4 -> Gi1/3/4
         item['port_old'] = full_int_name
+        item['descr'] = switch_port_desc_dict[ip_of_switch][short_int_name]['descr']      # old port description
         if ip_of_switch not in switch_port_dict.keys():
             switch_port_dict[ip_of_switch] = cscofunc.get_cli_sh_int_switchport_dict(net_connect)
         iface = item['port_old']
