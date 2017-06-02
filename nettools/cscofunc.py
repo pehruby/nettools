@@ -784,6 +784,52 @@ def get_cli_sh_int_description_dict(handler):
             int_dict[intstr.group(1)] = {'descr':descr}
     return int_dict
 
+def get_cli_username(handler):
+    """
+    Returns list of local users defined in IOS. Each user entry is a directory.
+    User directory items:
+        username
+        privilege - privilege level
+        password
+        encr_type - password/secret encryption type (0,5,7,8,9)
+        has_secret - is secret instead of password configured? (True/False)
+        secret
+
+    :param handler:
+    :return users:
+    """
+    users = []
+    cli_param = "sh run | i username"
+    cli_output = handler.send_command(cli_param)
+    cli_out_split = cli_output.split('\n')      # split output into lines
+    for line in cli_out_split:
+        # username cisco privilege 15 password 0 cisco
+        # username ocsic privilege 15 secret 5 $1$V8kL$qgqwmi1a9IV0/6fI1y72t0
+        int_dict = {}
+        intstr = re.match(r"username\s+([^\s]+).*", line)
+        if intstr:
+            int_dict['username'] = intstr.group(1)
+            int_dict['has_secret'] = False
+            intstr2 = re.search(r"privilege\s+([0-9]+).*", line)
+            if intstr2:
+                int_dict['privilege'] = intstr2.group(1)
+            else:
+                int_dict['privilege'] = 1
+            intstr2 = re.search(r"password\s+([0-9]+)\s+(.*)", line)
+            if intstr2:
+                int_dict['encr_type'] = intstr2.group(1)
+                int_dict['password'] = intstr2.group(2)
+                int_dict['secret'] = ''
+            else:                       # password is not configured, try to find secret
+                int_dict['password'] = ''
+                intstr2 = re.search(r"secret\s+([0-9]+)\s+(.*)", line)
+                if intstr2:
+                    int_dict['encr_type'] = intstr2.group(1)
+                    int_dict['secret'] = intstr2.group(2)
+                    int_dict['has_secret'] = True
+            users.append(int_dict)
+    return users
+
 def nxapi_post_cmd(ip, port, username, password, cmdtype, cmd, secure = True):
     '''
     Performs NXAPI command (cli_show, cli_conf) JSON POST call
