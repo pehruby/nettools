@@ -8,7 +8,9 @@ import sys
 import re
 import requests
 import json
-
+from netmiko import ConnectHandler
+from netmiko.ssh_exception import NetMikoTimeoutException
+from paramiko.ssh_exception import SSHException
 
 requests.packages.urllib3.disable_warnings()
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -534,7 +536,7 @@ def get_cli_sh_cdp_neighbor(handler):
     cli_output = handler.send_command(cli_param)
     cli_out_split = cli_output.split('----------------')      # split output into blocks (list) of devices
     for block in cli_out_split:
-        intstr = re.search(r"Device ID:\s+([A-Za-z0-9/._\-]+)\n", block)         # ?what characters can be in device name?
+        intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
         if intstr:                                  # device name was found, process the device entry
             name = intstr.group(1)
             int_dict = {}
@@ -553,6 +555,60 @@ def get_cli_sh_cdp_neighbor(handler):
                 int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
             cdp_list.append(int_dict)
     return cdp_list
+
+def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
+    """
+    """
+
+    this_cdp_list = []
+    neigbors_to_conntact = []
+    big_cdp_list_for_neighbor = big_cdp_list[:]
+
+    try:
+        net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_seed, username=username, password=pswd)
+    except NetMikoTimeoutException:
+        print("- unable to connect to the device, timeout")
+        return this_cdp_list
+    except (EOFError, SSHException):
+        print("- unable to connect to the device, error")
+        return this_cdp_list
+    
+    this_cdp_list = get_cli_sh_cdp_neighbor(net_connect)
+    net_connect.disconnect()
+    for item in this_cdp_list:
+        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, item):
+            big_cdp_list_for_neighbor.append(item)
+            if not is_cdp_device_in_list(neigbors_to_conntact, item):
+                neigbors_to_conntact.append(item)
+    
+    if level > 0:
+        for item in neigbors_to_conntact:
+            #if is_cdp_device_in_list(big_cdp_list, item):
+            #    continue
+            if 'Router' in item['capability'] or 'Switch' in item['capability']:
+                neighbor_cdp_list = get_device_list_cdp(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)
+            for neigh_item in neighbor_cdp_list:
+                if not is_cdp_device_in_list(big_cdp_list, neigh_item):
+                    big_cdp_list.append(neigh_item)
+                if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):
+                    big_cdp_list_for_neighbor.append(neigh_item)
+
+                
+    
+    for item in this_cdp_list:
+        if not is_cdp_device_in_list(big_cdp_list, item):
+            big_cdp_list.append(item)
+    return big_cdp_list
+
+
+def is_cdp_device_in_list(dlist, device):
+    """
+    """
+
+    for item in dlist:
+        if item['device_id'] == device['device_id']:
+            return True
+    return False
 
 def get_cli_sh_vlan(handler):
     '''
