@@ -450,6 +450,10 @@ def process_raw_vlan_list(rawlist):
 def find_regex_value_in_string(sstring, regexp):
     '''
     Searches for regexp group(1) inside sstring
+
+    :param sstring: list of devices (list of CDP entries)
+    :param regexp: device to be checked against dlist
+    :return : founded group(1) value or ''
     '''
     intstr = re.search(regexp, sstring)
     if intstr:
@@ -531,84 +535,182 @@ def get_cli_sh_cdp_neighbor(handler):
     '''
     Returns CDP table.
     '''
+    its_nxos = False
     cdp_list = []
     cli_param = "sh cdp entry *"
     cli_output = handler.send_command(cli_param)
+    if 'Invalid command at' in cli_output:  # it's probably NX-OS
+        cli_param = "sh cdp entry all"
+        cli_output = handler.send_command(cli_param)
+        its_nxos = True
     cli_out_split = cli_output.split('----------------')      # split output into blocks (list) of devices
     for block in cli_out_split:
-        intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
+        if its_nxos:
+            intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-\(\)]+)\n", block)
+        else:  
+            intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
         if intstr:                                  # device name was found, process the device entry
             name = intstr.group(1)
             int_dict = {}
             int_dict['device_id'] = name
-            int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"Entry address\(es\):\s+\n\s+IP address:\s+([0-9\.]+)\n"))
-            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[A-Za-z]{0,20}\s?([A-Za-z0-9\.\-\s]+),")) # cisco WS-6506-E -> WS-6506-E
+            if its_nxos:
+                int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"IPv4 Address:\s+([0-9\.]+)\n"))
+            else:
+                int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"Entry address\(es\):\s+\n\s+IP address:\s+([0-9\.]+)\n"))
+            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[a-z]{0,20}\s?([A-Za-z0-9\.\-\s/]+),")) # cisco WS-6506-E -> WS-6506-E
             cap_raw = find_regex_value_in_string(block, re.compile(r"Capabilities:\s+([A-Za-z0-9\-\s]+)\n"))
             cap_raw = cap_raw.rstrip(' ')           # remove trailing space
             int_dict['capability'] = cap_raw.split(' ')         # split capabilities int list
             int_dict['intf_id'] = find_regex_value_in_string(block, re.compile(r"Interface:\s+([A-Za-z0-9\./]+),"))
             int_dict['port_id'] = find_regex_value_in_string(block, re.compile(r" Port ID \(outgoing port\):\s+([A-Za-z0-9\./\s]+)\n"))
             int_dict['software'] = find_regex_value_in_string(block, re.compile(r"\(([A-Za-z0-9\-_]+)\),\s+Version"))
+            if int_dict['software'] == '':
+                int_dict['software'] = find_regex_value_in_string(block, re.compile(r"\(([A-Za-z0-9\-_]+)\)\s+Software"))       # NX-OS
             if 'Phone' in int_dict['capability']:
                 int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+:\n([A-Za-z0-9\.\-]+)\n"))
             else:
                 int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+                if int_dict['version'] == '':
+                    int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\(\)]+)\s"))    # IOS XE, ',' is not after version number
             cdp_list.append(int_dict)
     return cdp_list
 
 def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     """
+    Discovers network devices using CDP protocol by recurrent way. 'level' defines level of recurency, i.e level 0 means that only seed device is conntacted and neighbors of this device are not
+    It doesn't contain info about seed device if called with level = 0 !!!
+    List of found devices countains item defined in get_cli_sh_cdp_neighbor function. port_id, intf_id contain unusable values
+
+    :param ip_seed: IP address of seed device
+    :param username: for connection
+    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
+    :return big_cdp_list: list of found devices
     """
 
     this_cdp_list = []
     neigbors_to_conntact = []
-    big_cdp_list_for_neighbor = big_cdp_list[:]
+    big_cdp_list_for_neighbor = big_cdp_list[:]     # device list which is to be passed to neighbors recurently, at the beginning it is copy of obtained 'big_cdp_list'
+    neighbor_cdp_list = []
 
     try:
-        net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_seed, username=username, password=pswd)
+        net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_seed, username=username, password=pswd)     # connect to seed
     except NetMikoTimeoutException:
-        print("- unable to connect to the device, timeout")
+        print("- unable to connect to the device", ip_seed, ", timeout")
         return this_cdp_list
     except (EOFError, SSHException):
-        print("- unable to connect to the device, error")
+        print("- unable to connect to the device", ip_seed, ", error")
         return this_cdp_list
     
-    this_cdp_list = get_cli_sh_cdp_neighbor(net_connect)
+    this_cdp_list = get_cli_sh_cdp_neighbor(net_connect)        # get list of neighbors of this device
     net_connect.disconnect()
-    for item in this_cdp_list:
-        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, item):
-            big_cdp_list_for_neighbor.append(item)
+    for item in this_cdp_list:          # go through all neighbors
+        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, item):  # is new device? i.e. not already contained in big list which is to be sent recurently to other neighbors
+            big_cdp_list_for_neighbor.append(item)                      # yes it is
             if not is_cdp_device_in_list(neigbors_to_conntact, item):
-                neigbors_to_conntact.append(item)
+                neigbors_to_conntact.append(item)                       # add it to neighbors which we are going to recurently call (if level > 0)
     
     if level > 0:
-        for item in neigbors_to_conntact:
-            #if is_cdp_device_in_list(big_cdp_list, item):
-            #    continue
-            if 'Router' in item['capability'] or 'Switch' in item['capability']:
-                neighbor_cdp_list = get_device_list_cdp(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)
-            for neigh_item in neighbor_cdp_list:
-                if not is_cdp_device_in_list(big_cdp_list, neigh_item):
-                    big_cdp_list.append(neigh_item)
-                if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):
-                    big_cdp_list_for_neighbor.append(neigh_item)
+        for item in neigbors_to_conntact:           # go through all newly found neighbors
+            if 'Router' in item['capability'] or 'Switch' in item['capability']:        # is neighbor router or switch?
+                print("Going to analyze:", item['device_id'], item['ip_addr'])        # test
+                neighbor_cdp_list = get_device_list_cdp(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
+            for neigh_item in neighbor_cdp_list:        # go through all neighbors behind 'item'
+                if not is_cdp_device_in_list(big_cdp_list, neigh_item): # neigh_item not yet in big_cdp_list ?
+                    big_cdp_list.append(neigh_item)                     # add it
+                if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):    #neigh_item not yet in list which is to be sent to other neighbors?
+                    big_cdp_list_for_neighbor.append(neigh_item)                        # add it
 
-                
-    
+
     for item in this_cdp_list:
         if not is_cdp_device_in_list(big_cdp_list, item):
-            big_cdp_list.append(item)
+            big_cdp_list.append(item)       # add neigbors of this current device to big_cdp_list (if they are not already there)
     return big_cdp_list
 
 
 def is_cdp_device_in_list(dlist, device):
     """
+    Is device contained in dlist. 
+
+    :param dlist: list of devices (list of CDP entries)
+    :param device: device to be checked against dlist
+    :return Boolean:
     """
 
     for item in dlist:
         if item['device_id'] == device['device_id']:
             return True
     return False
+
+def get_device_info(ip_addr, username, pswd):
+    """
+    Get information about specific device. Returns dictionary with similar structure as get_cli_sh_cdp_neighbor,
+    i.e. device name, IOS version, platform
+
+    :param ip_addr: IP address of the device
+    :param username: for connection
+    :param pswd: password
+    :return ret_value: dictionary with device information
+    """
+
+
+    ret_value = {}
+
+    try:
+        net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_addr, username=username, password=pswd)     # connect to seed
+    except NetMikoTimeoutException:
+        print("- unable to connect to the device", ip_addr, ", timeout")
+        return None
+    except (EOFError, SSHException):
+        print("- unable to connect to the device", ip_addr, ", error")
+        return None
+
+    cli_param = "sh version"
+    cli_output = net_connect.send_command(cli_param)
+    found = find_regex_value_in_string(cli_output, re.compile(r"(Cisco Internetwork Operating System)"))
+    if found:
+        os_type = 'IOS'
+    else:
+        found = find_regex_value_in_string(cli_output, re.compile(r"(NX-OS)"))
+        if found:
+            os_type = 'NX-OS'
+        else:
+            found = find_regex_value_in_string(cli_output, re.compile(r"(IOS-XE)"))
+            if found:
+                os_type = 'IOS-XE'
+            else:
+                net_connect.disconnect()
+                return None     # OS not recognized
+    ret_value['ip_addr'] = ip_addr
+    sh_for_domainname = net_connect.send_command("show hosts")
+    net_connect.disconnect()
+    domain_name = find_regex_value_in_string(sh_for_domainname, re.compile(r"\sis\s([^\n]+)\n"))
+    if os_type == 'IOS':
+        name = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\suptime is"))
+        ret_value['platform_id'] = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\s\([A-Z0-9]+\)\sprocessor"))
+        ret_value['version'] = find_regex_value_in_string(cli_output, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+    elif os_type == 'IOS-XE':
+        name = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\suptime is"))
+        ret_value['platform_id'] = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\s\([A-Z0-9]+\)\s+processor with"))
+        ret_value['version'] = find_regex_value_in_string(cli_output, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+    elif os_type == 'NX-OS':
+        name = find_regex_value_in_string(cli_output, re.compile(r"Device name:\s+([^\s]+)"))
+        ret_value['platform_id'] = find_regex_value_in_string(cli_output, re.compile(r"Hardware\n\s+cisco ([^\s]+)"))
+        ret_value['version'] = find_regex_value_in_string(cli_output, re.compile(r"system:\s+version\s+([A-Za-z0-9\.\s\(\)]+)\n"))
+    if domain_name:
+        ret_value['device_id'] = name + '.' + domain_name
+    else:
+        ret_value['device_id'] = name
+
+    return ret_value
+
+
+
+
+
+
+        
+
+
 
 def get_cli_sh_vlan(handler):
     '''
