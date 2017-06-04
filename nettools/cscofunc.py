@@ -562,11 +562,20 @@ def get_cli_sh_cdp_neighbor(handler):
 
 def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     """
+    Discovers network devices using CDP protocol by recurrent way. 'level' defines level of recurency, i.e level 0 means that only seed device is conntacted and neighbors of this device are not
+    It doesn't contain info about seed device if called with level = 0 !!!
+    List of found devices countains item defined in get_cli_sh_cdp_neighbor function. port_id, intf_id contain unusable values
+
+    :param ip_seed: IP address of seed device
+    :param username: for connection
+    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
+    :return big_cdp_list: list of found devices
     """
 
     this_cdp_list = []
     neigbors_to_conntact = []
-    big_cdp_list_for_neighbor = big_cdp_list[:]     # device list which is to be passed to neighbors recurently, at the beginning it is copy of obtained 'big_cdp_list' 
+    big_cdp_list_for_neighbor = big_cdp_list[:]     # device list which is to be passed to neighbors recurently, at the beginning it is copy of obtained 'big_cdp_list'
+    neighbor_cdp_list = []
 
     try:
         net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_seed, username=username, password=pswd)     # connect to seed
@@ -577,10 +586,10 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
         print("- unable to connect to the device", ip_seed, ", error")
         return this_cdp_list
     
-    this_cdp_list = get_cli_sh_cdp_neighbor(net_connect)        # get list of neighbors to this device
+    this_cdp_list = get_cli_sh_cdp_neighbor(net_connect)        # get list of neighbors of this device
     net_connect.disconnect()
     for item in this_cdp_list:          # go through all neighbors
-        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, item):  # is new device? i.e. not already contained in big list which is to be sent recurently to other neighbors    
+        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, item):  # is new device? i.e. not already contained in big list which is to be sent recurently to other neighbors
             big_cdp_list_for_neighbor.append(item)                      # yes it is
             if not is_cdp_device_in_list(neigbors_to_conntact, item):
                 neigbors_to_conntact.append(item)                       # add it to neighbors which we are going to recurently call (if level > 0)
@@ -588,6 +597,7 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     if level > 0:
         for item in neigbors_to_conntact:           # go through all newly found neighbors
             if 'Router' in item['capability'] or 'Switch' in item['capability']:        # is neighbor router or switch?
+                print("Going to analyze:", item['device_id'], item['ip_addr'])        # test
                 neighbor_cdp_list = get_device_list_cdp(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
             for neigh_item in neighbor_cdp_list:        # go through all neighbors behind 'item'
                 if not is_cdp_device_in_list(big_cdp_list, neigh_item): # neigh_item not yet in big_cdp_list ?
@@ -595,8 +605,7 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
                 if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):    #neigh_item not yet in list which is to be sent to other neighbors?
                     big_cdp_list_for_neighbor.append(neigh_item)                        # add it
 
-                
-    
+
     for item in this_cdp_list:
         if not is_cdp_device_in_list(big_cdp_list, item):
             big_cdp_list.append(item)       # add neigbors of this current device to big_cdp_list (if they are not already there)
@@ -605,6 +614,11 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
 
 def is_cdp_device_in_list(dlist, device):
     """
+    Is device contained in dlist. 
+
+    :param dlist: list of devices (list of CDP entries)
+    :param device: device to be checked against dlist
+    :return Boolean:
     """
 
     for item in dlist:
