@@ -450,6 +450,10 @@ def process_raw_vlan_list(rawlist):
 def find_regex_value_in_string(sstring, regexp):
     '''
     Searches for regexp group(1) inside sstring
+
+    :param sstring: list of devices (list of CDP entries)
+    :param regexp: device to be checked against dlist
+    :return : founded group(1) value or ''
     '''
     intstr = re.search(regexp, sstring)
     if intstr:
@@ -531,18 +535,29 @@ def get_cli_sh_cdp_neighbor(handler):
     '''
     Returns CDP table.
     '''
+    its_nxos = False
     cdp_list = []
     cli_param = "sh cdp entry *"
     cli_output = handler.send_command(cli_param)
+    if 'Invalid command at' in cli_output:  # it's probably NX-OS
+        cli_param = "sh cdp entry all"
+        cli_output = handler.send_command(cli_param)
+        its_nxos = True
     cli_out_split = cli_output.split('----------------')      # split output into blocks (list) of devices
     for block in cli_out_split:
-        intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
+        if its_nxos:
+            intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-\(\)]+)\n", block)
+        else:  
+            intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
         if intstr:                                  # device name was found, process the device entry
             name = intstr.group(1)
             int_dict = {}
             int_dict['device_id'] = name
-            int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"Entry address\(es\):\s+\n\s+IP address:\s+([0-9\.]+)\n"))
-            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[A-Za-z]{0,20}\s?([A-Za-z0-9\.\-\s/]+),")) # cisco WS-6506-E -> WS-6506-E
+            if its_nxos:
+                int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"IPv4 Address:\s+([0-9\.]+)\n"))
+            else:
+                int_dict['ip_addr'] = find_regex_value_in_string(block, re.compile(r"Entry address\(es\):\s+\n\s+IP address:\s+([0-9\.]+)\n"))
+            int_dict['platform_id'] = find_regex_value_in_string(block, re.compile(r"Platform:\s+[a-z]{0,20}\s?([A-Za-z0-9\.\-\s/]+),")) # cisco WS-6506-E -> WS-6506-E
             cap_raw = find_regex_value_in_string(block, re.compile(r"Capabilities:\s+([A-Za-z0-9\-\s]+)\n"))
             cap_raw = cap_raw.rstrip(' ')           # remove trailing space
             int_dict['capability'] = cap_raw.split(' ')         # split capabilities int list
@@ -625,6 +640,77 @@ def is_cdp_device_in_list(dlist, device):
         if item['device_id'] == device['device_id']:
             return True
     return False
+
+def get_device_info(ip_addr, username, pswd):
+    """
+    Get information about specific device. Returns dictionary with similar structure as get_cli_sh_cdp_neighbor,
+    i.e. device name, IOS version, platform
+
+    :param ip_addr: IP address of the device
+    :param username: for connection
+    :param pswd: password
+    :return ret_value: dictionary with device information
+    """
+
+
+    ret_value = {}
+
+    try:
+        net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_addr, username=username, password=pswd)     # connect to seed
+    except NetMikoTimeoutException:
+        print("- unable to connect to the device", ip_addr, ", timeout")
+        return None
+    except (EOFError, SSHException):
+        print("- unable to connect to the device", ip_addr, ", error")
+        return None
+
+    cli_param = "sh version"
+    cli_output = net_connect.send_command(cli_param)
+    found = find_regex_value_in_string(cli_output, re.compile(r"(Cisco Internetwork Operating System)"))
+    if found:
+        os_type = 'IOS'
+    else:
+        found = find_regex_value_in_string(cli_output, re.compile(r"(NX-OS)"))
+        if found:
+            os_type = 'NX-OS'
+        else:
+            found = find_regex_value_in_string(cli_output, re.compile(r"(IOS-XE)"))
+            if found:
+                os_type = 'IOS-XE'
+            else:
+                net_connect.disconnect()
+                return None     # OS not recognized
+    ret_value['ip_addr'] = ip_addr
+    sh_for_domainname = net_connect.send_command("show hosts")
+    net_connect.disconnect()
+    domain_name = find_regex_value_in_string(sh_for_domainname, re.compile(r"\sis\s([^\n]+)\n"))
+    if os_type == 'IOS':
+        name = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\suptime is"))
+        ret_value['platform_id'] = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\s\([A-Z0-9]+\)\sprocessor"))
+        ret_value['version'] = find_regex_value_in_string(cli_output, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+    elif os_type == 'IOS-XE':
+        name = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\suptime is"))
+        ret_value['platform_id'] = find_regex_value_in_string(cli_output, re.compile(r"([^\s]+)\s\([A-Z0-9]+\)\s+processor with"))
+        ret_value['version'] = find_regex_value_in_string(cli_output, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
+    elif os_type == 'NX-OS':
+        name = find_regex_value_in_string(cli_output, re.compile(r"Device name:\s+([^\s]+)"))
+        ret_value['platform_id'] = find_regex_value_in_string(cli_output, re.compile(r"Hardware\n\s+cisco ([^\s]+)"))
+        ret_value['version'] = find_regex_value_in_string(cli_output, re.compile(r"system:\s+version\s+([A-Za-z0-9\.\s\(\)]+)\n"))
+    if domain_name:
+        ret_value['device_id'] = name + '.' + domain_name
+    else:
+        ret_value['device_id'] = name
+
+    return ret_value
+
+
+
+
+
+
+        
+
+
 
 def get_cli_sh_vlan(handler):
     '''
