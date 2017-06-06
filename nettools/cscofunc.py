@@ -577,6 +577,27 @@ def get_cli_sh_cdp_neighbor(handler):
 
 def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     """
+    Discovers network devices using CDP protocol
+    Check level. In case level is 0, calls get_device_info and then get_device_list_cdp_recur.
+    If level is > 0 it calls get_device_list_cdp_recur only
+
+    :param ip_seed: IP address of seed device
+    :param username: for connection
+    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
+    :return big_cdp_list: list of found devices
+    """
+
+    if level < 0:
+        return big_cdp_list
+    if level == 0:
+        seed_item = get_device_info(ip_seed, username, pswd)
+        big_cdp_list.append(seed_item)
+    big_cdp_list = get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_list, level)
+    return big_cdp_list
+
+
+def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_list, level):
+    """
     Discovers network devices using CDP protocol by recurrent way. 'level' defines level of recurency, i.e level 0 means that only seed device is conntacted and neighbors of this device are not
     It doesn't contain info about seed device if called with level = 0 !!!
     List of found devices countains item defined in get_cli_sh_cdp_neighbor function. port_id, intf_id contain unusable values
@@ -613,7 +634,7 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
         for item in neigbors_to_conntact:           # go through all newly found neighbors
             if 'Router' in item['capability'] or 'Switch' in item['capability']:        # is neighbor router or switch?
                 print("Going to analyze:", item['device_id'], item['ip_addr'])        # test
-                neighbor_cdp_list = get_device_list_cdp(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
+                neighbor_cdp_list = get_device_list_cdp_recur(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
             for neigh_item in neighbor_cdp_list:        # go through all neighbors behind 'item'
                 if not is_cdp_device_in_list(big_cdp_list, neigh_item): # neigh_item not yet in big_cdp_list ?
                     big_cdp_list.append(neigh_item)                     # add it
@@ -670,16 +691,20 @@ def get_device_info(ip_addr, username, pswd):
     if found:
         os_type = 'IOS'
     else:
-        found = find_regex_value_in_string(cli_output, re.compile(r"(NX-OS)"))
+        found = find_regex_value_in_string(cli_output, re.compile(r"(Cisco IOS)"))
         if found:
-            os_type = 'NX-OS'
+            os_type = 'IOS'
         else:
-            found = find_regex_value_in_string(cli_output, re.compile(r"(IOS-XE)"))
+            found = find_regex_value_in_string(cli_output, re.compile(r"(NX-OS)"))
             if found:
-                os_type = 'IOS-XE'
+                os_type = 'NX-OS'
             else:
-                net_connect.disconnect()
-                return None     # OS not recognized
+                found = find_regex_value_in_string(cli_output, re.compile(r"(IOS-XE)"))
+                if found:
+                    os_type = 'IOS-XE'
+                else:
+                    net_connect.disconnect()
+                    return None     # OS not recognized
     ret_value['ip_addr'] = ip_addr
     sh_for_domainname = net_connect.send_command("show hosts")
     net_connect.disconnect()
