@@ -13,13 +13,17 @@ import cscofunc
 import prtgfunc
 
 
-def print_paused(devices):
+def print_paused(devices, prtg_ip):
     """
+    Prints devices
+
+    :param devices: list of devices
+    :param prtg_ip: PRTG IP address
     """
 
-    print("Device;host;prtg_id;message;location")
+    print("Device;Host;Url;Message;Location")
     for device in devices:
-        print(device['device']+';'+device['host']+';'+str(device['objid'])+';'+device['message_raw']+';'+device['location_raw'])
+        print(device['device']+';'+device['host']+';'+'https://'+prtg_ip+'/device.htm?id='+str(device['objid'])+';'+device['message_raw']+';'+device['location_raw'])
 
 def main():
     ''' Main
@@ -84,7 +88,7 @@ def main():
         sys.exit(2)
     output = prtgfunc.get_device_list(ip_prtg, username, passhash, obj_id)
     output2 = prtgfunc.get_paused_dev_list(output['devices'], days_paused)
-    print_paused(output2)
+    print_paused(output2, ip_prtg)
 
 if __name__ == "__main__":
     main()

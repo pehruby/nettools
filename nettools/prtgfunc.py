@@ -39,6 +39,15 @@ def get_passhash(ip_addr, username, password):
 
 def get_device_list(ip_addr, username, passhash, obj_id=0, res_num=5000):
     """
+    Returns list of devices configured under obj_id with max number of res_num items
+    Devices are returned in list devices_list['devices']. Each item is directory
+
+    :param ip_addr: IP address of PRTG server
+    :param username:
+    :param passhash: password hash
+    :param obj_id: object id where searching starts, devices in tree under this id are returned
+    :param res_num:  max. number of returned items
+    :returns devices_list: list of devices
     """
     columns = 'objid,type,active,host,device,status,downtime,message,tags,location'
     url = "https://"+ip_addr+"/api/table.json"
@@ -56,12 +65,19 @@ def get_device_list(ip_addr, username, passhash, obj_id=0, res_num=5000):
         return None
     if resp.status_code != 200:
         return 'Error'
-    body_json = json.loads(resp.text)
+    devices_list = json.loads(resp.text)
 
-    return body_json
+    return devices_list
 
 def get_paused_dev_list(all_dev_list, days_paused, pause_type=7):
     """
+    Filters device list according to parameters days_paused and pause_type
+    Only devices of specific pause_type and paused longer or equal days_paused days paused
+
+    :param all_dev_list: list of devices which are to be filterd
+    :param days_paused: days paused threshold
+    :param pause_type:  7=Paused by User, 8=Paused by Dependency, 9=Paused by Schedule
+    :returns ret_list: list of devices
     """
     ret_list = []
     today = date.today()
