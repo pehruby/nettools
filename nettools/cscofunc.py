@@ -567,19 +567,49 @@ def get_cli_sh_cdp_neighbor(handler):
             if int_dict['software'] == '':
                 int_dict['software'] = find_regex_value_in_string(block, re.compile(r"\(([A-Za-z0-9\-_]+)\)\s+Software"))       # NX-OS
             if 'Phone' in int_dict['capability']:
-                int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+:\n([A-Za-z0-9\.\-]+)\n"))
+                # Version :
+                # SCCP 9.4.1.3.SR1
+                #
+                # Version :
+                # SCCP11.9-3-1SR4-1S
+                int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+:\n([A-Za-z0-9\.\- ]+)\n"))
             else:
                 int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\s\(\)]+),"))
                 if int_dict['version'] == '':
                     int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version\s+([A-Za-z0-9\.\(\)]+)\s"))    # IOS XE, ',' is not after version number
+                if int_dict['version'] == '':
+                    int_dict['version'] = find_regex_value_in_string(block, re.compile(r"Version :\n([A-Za-z0-9\.\- ]+)\n"))    # ATA is not Phone :(
             cdp_list.append(int_dict)
     return cdp_list
 
 def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     """
+    Discovers network devices using CDP protocol
+    Check level. In case level is 0, calls get_device_info and then get_device_list_cdp_recur.
+    If level is > 0 it calls get_device_list_cdp_recur only
+
+    :param ip_seed: IP address of seed device
+    :param username: for connection
+    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
+    :return big_cdp_list: list of found devices
+    """
+
+    if level < 0:
+        return big_cdp_list
+    if level == 0:
+        seed_item = get_device_info(ip_seed, username, pswd)
+        big_cdp_list.append(seed_item)
+    big_cdp_list = get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_list, level)
+    return big_cdp_list
+
+
+def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_list, level):
+    """
     Discovers network devices using CDP protocol by recurrent way. 'level' defines level of recurency, i.e level 0 means that only seed device is conntacted and neighbors of this device are not
     It doesn't contain info about seed device if called with level = 0 !!!
     List of found devices countains item defined in get_cli_sh_cdp_neighbor function. port_id, intf_id contain unusable values
+
+    !!! Upravit, aby se neporovn8vala Host zarizeni !!!
 
     :param ip_seed: IP address of seed device
     :param username: for connection
@@ -612,13 +642,16 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     if level > 0:
         for item in neigbors_to_conntact:           # go through all newly found neighbors
             if 'Router' in item['capability'] or 'Switch' in item['capability']:        # is neighbor router or switch?
-                print("Going to analyze:", item['device_id'], item['ip_addr'])        # test
-                neighbor_cdp_list = get_device_list_cdp(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
-            for neigh_item in neighbor_cdp_list:        # go through all neighbors behind 'item'
-                if not is_cdp_device_in_list(big_cdp_list, neigh_item): # neigh_item not yet in big_cdp_list ?
-                    big_cdp_list.append(neigh_item)                     # add it
-                if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):    #neigh_item not yet in list which is to be sent to other neighbors?
-                    big_cdp_list_for_neighbor.append(neigh_item)                        # add it
+                if is_ip_valid(item['ip_addr']):
+                    print("Going to analyze:", item['device_id'], item['ip_addr'])        # test
+                    neighbor_cdp_list = get_device_list_cdp_recur(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
+                    for neigh_item in neighbor_cdp_list:        # go through all neighbors behind 'item'
+                        if not is_cdp_device_in_list(big_cdp_list, neigh_item): # neigh_item not yet in big_cdp_list ?
+                            big_cdp_list.append(neigh_item)                     # add it
+                        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):    #neigh_item not yet in list which is to be sent to other neighbors?
+                            big_cdp_list_for_neighbor.append(neigh_item)                        # add it
+                else:
+                    print("Invalid IP address:", item['ip_addr'], "device:", item['device_id'])
 
 
     for item in this_cdp_list:
@@ -670,16 +703,20 @@ def get_device_info(ip_addr, username, pswd):
     if found:
         os_type = 'IOS'
     else:
-        found = find_regex_value_in_string(cli_output, re.compile(r"(NX-OS)"))
+        found = find_regex_value_in_string(cli_output, re.compile(r"(Cisco IOS)"))
         if found:
-            os_type = 'NX-OS'
+            os_type = 'IOS'
         else:
-            found = find_regex_value_in_string(cli_output, re.compile(r"(IOS-XE)"))
+            found = find_regex_value_in_string(cli_output, re.compile(r"(NX-OS)"))
             if found:
-                os_type = 'IOS-XE'
+                os_type = 'NX-OS'
             else:
-                net_connect.disconnect()
-                return None     # OS not recognized
+                found = find_regex_value_in_string(cli_output, re.compile(r"(IOS-XE)"))
+                if found:
+                    os_type = 'IOS-XE'
+                else:
+                    net_connect.disconnect()
+                    return None     # OS not recognized
     ret_value['ip_addr'] = ip_addr
     sh_for_domainname = net_connect.send_command("show hosts")
     net_connect.disconnect()
