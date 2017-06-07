@@ -21,6 +21,7 @@ def print_paused(devices, prtg_ip):
     :param prtg_ip: PRTG IP address
     """
 
+    print("sep=;")
     print("Device;Host;Url;Message;Location")
     for device in devices:
         print(device['device']+';'+device['host']+';'+'https://'+prtg_ip+'/device.htm?id='+str(device['objid'])+';'+device['message_raw']+';'+device['location_raw'])
@@ -29,6 +30,7 @@ def main():
     ''' Main
     '''
     usage_str = '''
+    Prints devices which are paused in PRTG
     Usage: prtgpaused.py [OPTIONS]
     -h,     --help                      display help
     -i,     --ipaddr                    IP address of PRTG server
@@ -46,7 +48,7 @@ def main():
     argv = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(argv, "hp:i:u:d:o:", [ "help" "password=", "ipaddr=", "username=", "days=", "objid="])
+        opts, args = getopt.getopt(argv, "hp:i:u:d:o:", ["help", "password=", "ipaddr=", "username=", "days=", "objid="])
     except getopt.GetoptError:
         print(usage_str)
         sys.exit(2)
