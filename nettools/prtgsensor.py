@@ -12,28 +12,14 @@ os.chdir(scriptPath)
 import cscofunc
 import prtgfunc
 
-
-def print_paused(devices, prtg_ip):
-    """
-    Prints devices
-
-    :param devices: list of devices
-    :param prtg_ip: PRTG IP address
-    """
-
-    print("sep=;")
-    print("Device;Host;Url;Message;Location")
-    for device in devices:
-        print(device['device']+';'+device['host']+';'+'https://'+prtg_ip+'/device.htm?id='+str(device['objid'])+';'+device['message_raw']+';'+device['location_raw'])
-
 def main():
     ''' Main
 
-    Prints devices defined under specific object in PRTG which are paused.
+    The utility prints info about specific PRTG sensors of sensors defined defined under specific object (device, group)
 
     '''
     usage_str = '''
-    Usage: prtgpaused.py [OPTIONS]
+    Usage: prtgsensors.py [OPTIONS]
     -h,     --help                      display help
     -i,     --ipaddr                    IP address of PRTG server
     -u,     --username                  username
@@ -44,6 +30,7 @@ def main():
     username = ''
     pswd = ''
     ip_prtg = ''
+    sensorlist = []
     days_paused = 0
     obj_id = 0
     
@@ -65,8 +52,6 @@ def main():
             ip_prtg = arg
         elif opt in ("-p", "--password"):
             pswd = arg
-        elif opt in ("-d", "--days"):
-            days_paused = int(arg)
         elif opt in ("-o", "--objid"):
             obj_id = int(arg)
 
@@ -90,10 +75,42 @@ def main():
     if passhash == 'Error':
         print('Error - invalid credentials')
         sys.exit(2)
-    output = prtgfunc.get_device_list(ip_prtg, username, passhash, obj_id)
-    output2 = prtgfunc.get_paused_dev_list(output['devices'], days_paused)
-    print_paused(output2, ip_prtg)
+
+    sensor_type = prtgfunc.get_objectid_type(ip_prtg, username, passhash, obj_id)
+    if sensor_type == 0:
+        print("Object ID "+str(obj_id)+" doesn't exist")
+        sys.exit(0)
+    if sensor_type == 999:
+        print("Object ID "+str(obj_id)+" error")
+        sys.exit(0)
+    print('--------------')
+    print('Sensors status')
+    print('--------------')
+    if sensor_type == 3:    # process sensor
+        sensor = prtgfunc.get_sensor(ip_prtg, username, passhash, obj_id)
+        sensorlist.append(sensor)
+        prtgfunc.print_sensors_info(sensorlist)
+    elif sensor_type == 2:    # device
+        outlistlist = prtgfunc.get_sensors_under_device(ip_prtg, username, passhash, obj_id)
+        for item in outlistlist['table']:
+            sensor = prtgfunc.get_sensor(ip_prtg, username, passhash, item['objid'])
+            sensorlist.append(sensor)
+        prtgfunc.print_sensors_info(sensorlist)
+    elif sensor_type == 1:    # process group
+        devices = prtgfunc.get_device_list(ip_prtg, username, passhash, obj_id)
+        for device in devices['devices']:
+            print('')
+            print('=================================')
+            print('Device: '+device['device']+', Group:'+device['group'])
+            print('=================================')
+            outlistlist = prtgfunc.get_sensors_under_device(ip_prtg, username, passhash, device['objid'])
+            for item in outlistlist['table']:
+                sensor = prtgfunc.get_sensor(ip_prtg, username, passhash, item['objid'])
+                sensorlist.append(sensor)
+            prtgfunc.print_sensors_info(sensorlist)
+
+
 
 if __name__ == "__main__":
-    main()
+     main()
 
