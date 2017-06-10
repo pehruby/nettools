@@ -83,6 +83,7 @@ def main():
     pswd = ''
     found_devices = []
     passwords = {}
+    config_file = ''
     output_file = ''
     
     argv = sys.argv[1:]
@@ -107,7 +108,9 @@ def main():
             output_file = arg
 
 
-
+    if not config_file:
+        print("Config file not specified")
+        sys.exit(2)
 
     config_dict = load_cfg_file(config_file)
     # sanity checks
@@ -129,7 +132,7 @@ def main():
             if not seed['username'] in passwords:
                 passwords[seed['username']] = getpass.getpass("Password for "+seed['username']+":")
         for seed in config_dict['seeds']:
-            found_devices = cscofunc.get_device_list_cdp(seed['ip'], username, passwords[username], found_devices, level)
+            found_devices = cscofunc.get_device_list_cdp(seed['ip'], seed['username'], passwords[seed['username']], found_devices, level)
     if not output_file:
         print_devices(found_devices)            # print output to screen
     else:
