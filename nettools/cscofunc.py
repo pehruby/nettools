@@ -582,11 +582,12 @@ def get_cli_sh_cdp_neighbor(handler):
             cdp_list.append(int_dict)
     return cdp_list
 
-def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
+def get_device_list_cdp_seed(seeds, big_cdp_list):
     """
     Discovers network devices using CDP protocol
     Check level. In case level is 0, calls get_device_info and then get_device_list_cdp_recur.
     If level is > 0 it calls get_device_list_cdp_recur only
+    seeds is list of dict, keys: ip, level, username, password
 
     :param ip_seed: IP address of seed device
     :param username: for connection
@@ -598,12 +599,15 @@ def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
     big_cdp_dict['nodes'] = []
     big_cdp_dict['hosts'] = []
 
-    if level < 0:
-        return big_cdp_list
-    if level == 0:
-        seed_item = get_device_info(ip_seed, username, pswd)    # get info about seed device
-        big_cdp_dict['nodes'].append(seed_item)
-    big_cdp_dict = get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level)
+    for seed in seeds:
+        if seed['level'] < 0:
+            return big_cdp_list
+        if seed['level'] == 0:
+            seed_item = get_device_info(seed['ip'], seed['username'], seed['passsword'])    # get info about seed device
+            if not is_cdp_device_in_list(big_cdp_dict['nodes'], seed_item):
+                big_cdp_dict['nodes'].append(seed_item)
+        big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+
     for item in big_cdp_dict['hosts']:
         big_cdp_list.append(item)
     for item in big_cdp_dict['nodes']:

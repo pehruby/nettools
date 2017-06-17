@@ -85,6 +85,7 @@ def main():
     passwords = {}
     config_file = ''
     output_file = ''
+    seeds = []
     
     argv = sys.argv[1:]
 
@@ -128,11 +129,13 @@ def main():
             if 'level' in seed:
                 level = seed['level']
             else:
-                level = 5
+                seed['level'] = 5
             if not seed['username'] in passwords:
                 passwords[seed['username']] = getpass.getpass("Password for "+seed['username']+":")
-        for seed in config_dict['seeds']:
-            found_devices = cscofunc.get_device_list_cdp(seed['ip'], seed['username'], passwords[seed['username']], found_devices, level)
+            seed['password'] = passwords[seed['username']]
+            seeds.append(seed)
+
+        found_devices = cscofunc.get_device_list_cdp_seed(seeds, found_devices)
     if not output_file:
         print_devices(found_devices)            # print output to screen
     else:
