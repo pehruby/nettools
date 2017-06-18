@@ -88,6 +88,10 @@ def main():
     output_file = ''
     seeds = []
     ranges = []
+
+    big_cdp_dict = {}
+    big_cdp_dict['nodes'] = []
+    big_cdp_dict['hosts'] = []
     
     argv = sys.argv[1:]
 
@@ -120,21 +124,6 @@ def main():
 
 
     
-    if 'ranges' in config_dict:
-        for ip_range in config_dict['ranges']:
-            if 'range' not in ip_range:
-                print('IP range is not specified in config file')
-                sys.exit(1)
-            try:
-                test_ip = ipaddress.ip_network(ip_range['range'])
-            except ValueError:
-                print('Address/mask is invalid for IPv4:', ip_range['range'])
-                sys.exit(1)
-            if not ip_range['username'] in passwords:
-                passwords[ip_range['username']] = getpass.getpass("Password for "+ip_range['username']+":")
-            ip_range['password'] = passwords[ip_range['username']]
-            ranges.append(ip_range)
-        found_devices = cscofunc.get_device_list_cdp_subnet(ranges, found_devices)
 
     if 'seeds' in config_dict:
         for seed in config_dict['seeds']:
@@ -153,7 +142,27 @@ def main():
             seed['password'] = passwords[seed['username']]
             seeds.append(seed)
 
-        found_devices = cscofunc.get_device_list_cdp_seed(seeds, found_devices)
+        big_cdp_dict = cscofunc.get_device_list_cdp_seed(seeds, big_cdp_dict)
+
+    if 'ranges' in config_dict:
+        for ip_range in config_dict['ranges']:
+            if 'range' not in ip_range:
+                print('IP range is not specified in config file')
+                sys.exit(1)
+            try:
+                test_ip = ipaddress.ip_network(ip_range['range'])
+            except ValueError:
+                print('Address/mask is invalid for IPv4:', ip_range['range'])
+                sys.exit(1)
+            if not ip_range['username'] in passwords:
+                passwords[ip_range['username']] = getpass.getpass("Password for "+ip_range['username']+":")
+            ip_range['password'] = passwords[ip_range['username']]
+            ranges.append(ip_range)
+        big_cdp_dict = cscofunc.get_device_list_cdp_subnet(ranges, big_cdp_dict)
+    for item in big_cdp_dict['hosts']:
+        found_devices.append(item)
+    for item in big_cdp_dict['nodes']:
+        found_devices.append(item)
     if not output_file:
         print_devices(found_devices)            # print output to screen
     else:

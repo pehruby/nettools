@@ -599,13 +599,11 @@ def ping(host):
     return subprocess.call(args, shell=need_sh) == 0
 
 
-def get_device_list_cdp_subnet(ip_ranges, big_cdp_list):
+def get_device_list_cdp_subnet(ip_ranges, big_cdp_dict):
     """
     """
 
-    big_cdp_dict = {}
-    big_cdp_dict['nodes'] = []
-    big_cdp_dict['hosts'] = []
+    
 
     for ip_range in ip_ranges:
         net = ipaddress.ip_network(ip_range['range'])
@@ -613,18 +611,20 @@ def get_device_list_cdp_subnet(ip_ranges, big_cdp_list):
             if ping(host.exploded):              # does IP responds to ping ?
                 one_item = get_device_info(host.exploded, ip_range['username'], ip_range['password'])    # get info about device
                 if one_item:            # one_item is not None
-                    if not is_cdp_device_in_list(big_cdp_dict['nodes'], one_item):
+                    retval = is_cdp_device_in_list(big_cdp_dict['nodes'], one_item)
+                    if retval == 0:     # device is not in big_cdp_dict
                         one_item['found_via_cdp'] = False
                         big_cdp_dict['nodes'].append(one_item)
-                    big_cdp_dict = get_device_list_cdp_recur(host.exploded, ip_range['username'], ip_range['password'], big_cdp_dict, 0)
+                    elif retval != 3:    # device is in big_cdp_dict but was not yet analyzed for CDP info
+                        big_cdp_dict = get_device_list_cdp_recur(host.exploded, ip_range['username'], ip_range['password'], big_cdp_dict, 0)
 
-    for item in big_cdp_dict['hosts']:
-        big_cdp_list.append(item)
-    for item in big_cdp_dict['nodes']:
-        big_cdp_list.append(item)
-    return big_cdp_list
+#    for item in big_cdp_dict['hosts']:
+#        big_cdp_list.append(item)
+#    for item in big_cdp_dict['nodes']:
+#        big_cdp_list.append(item)
+    return big_cdp_dict
 
-def get_device_list_cdp_seed(seeds, big_cdp_list):
+def get_device_list_cdp_seed(seeds, big_cdp_dict):
     """
     Discovers network devices using CDP protocol
     Check level. In case level is 0, calls get_device_info and then get_device_list_cdp_recur.
@@ -636,24 +636,21 @@ def get_device_list_cdp_seed(seeds, big_cdp_list):
     :return big_cdp_list: list of found devices
     """
 
-    big_cdp_dict = {}
-    big_cdp_dict['nodes'] = []
-    big_cdp_dict['hosts'] = []
+
 
     for seed in seeds:
         if seed['level'] < 0:
-            return big_cdp_list
+            return big_cdp_dict
         if seed['level'] == 0:
             seed_item = get_device_info(seed['ip'], seed['username'], seed['passsword'])    # get info about seed device
             if not is_cdp_device_in_list(big_cdp_dict['nodes'], seed_item):
+                seed_item['was_cdp_analyzed'] = True
                 big_cdp_dict['nodes'].append(seed_item)
         big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
 
-    for item in big_cdp_dict['hosts']:
-        big_cdp_list.append(item)
-    for item in big_cdp_dict['nodes']:
-        big_cdp_list.append(item)
-    return big_cdp_list
+#   ADD INFO THAT SEED WAS CDP ANALYZED !!! ('was_cdp_analyzed'). IF level > 1
+
+    return big_cdp_dict
 
 
 def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level):
@@ -676,6 +673,8 @@ def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level):
     big_cdp_dict_for_neighbor = {}
     big_cdp_dict_for_neighbor['hosts'] = []
     big_cdp_dict_for_neighbor['nodes'] = []
+    cdp_analyzed_item = []
+    tmp_node_list = []
 
     try:
         net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_seed, username=username, password=pswd)     # connect to seed
@@ -726,7 +725,17 @@ def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level):
     for item in this_cdp_list:
         if not is_cdp_device_endnode(item):        # end nodes are already in 'hosts' list
             if not is_cdp_device_in_list(big_cdp_dict['nodes'], item):
+                if level > 0:               # if level > 0, the device was analyzed using get_device_list_cdp_rec in this call of the function (couple of lines above), the info is used is range discovery
+                    item['was_cdp_analyzed'] = True
                 big_cdp_dict['nodes'].append(item)       # add neigbors of this current device to big_cdp_list (if they are not already there)
+            else:
+                if level > 0:
+                    cdp_analyzed_item.append(item)      # list of items which were CDP analyzed but were already added in big_cdp_dict without this information
+    for item in big_cdp_dict['nodes']:
+        if is_cdp_device_in_list(cdp_analyzed_item, item):
+            item['was_cdp_analyzed'] = True         # add info that item was CDP analyzed, this info is useful when range based discovery follows
+        tmp_node_list.append(item)
+    big_cdp_dict['nodes'] = tmp_node_list
     return big_cdp_dict
 
 
@@ -736,7 +745,7 @@ def is_cdp_device_in_list(dlist, device):
 
     :param dlist: list of devices (list of CDP entries)
     :param device: device to be checked against dlist
-    :return int: 0 - not found, 1 - found, 2 -found (but device in list was not discovered using CDP)
+    :return int: 0 - not found, 1 - found, 2 -found (but device in list was not discovered using CDP), 3 - found (and was analyzed for CDP information)
     """
 
     for item in dlist:
@@ -744,6 +753,9 @@ def is_cdp_device_in_list(dlist, device):
             if 'found_via_cdp' in item:
                 if not item['found_via_cdp']:
                     return 2
+            if 'was_cdp_analyzed' in item:
+                if item['was_cdp_analyzed']:
+                    return 3
             return 1
     return 0
 
@@ -754,7 +766,7 @@ def is_cdp_device_endnode(device):
     :param device: one cdp entry dict
     :return Boolean:
     """
-    if 'Phone' in device['capability'] or 'Trans-Bridge' in device['capability'] or 'Host' in device['capability']:
+    if 'Phone' in device['capability'] or 'Trans-Bridge' in device['capability']:
         return True
     return False
 
