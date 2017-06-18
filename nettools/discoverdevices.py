@@ -5,6 +5,7 @@ import getpass
 import getopt
 import os
 import yaml
+import ipaddress
 
 import cscofunc
 
@@ -86,6 +87,7 @@ def main():
     config_file = ''
     output_file = ''
     seeds = []
+    ranges = []
     
     argv = sys.argv[1:]
 
@@ -118,6 +120,22 @@ def main():
 
 
     
+    if 'ranges' in config_dict:
+        for ip_range in config_dict['ranges']:
+            if 'range' not in ip_range:
+                print('IP range is not specified in config file')
+                sys.exit(1)
+            try:
+                test_ip = ipaddress.ip_network(ip_range['range'])
+            except ValueError:
+                print('Address/mask is invalid for IPv4:', ip_range['range'])
+                sys.exit(1)
+            if not ip_range['username'] in passwords:
+                passwords[ip_range['username']] = getpass.getpass("Password for "+ip_range['username']+":")
+            ip_range['password'] = passwords[ip_range['username']]
+            ranges.append(ip_range)
+        found_devices = cscofunc.get_device_list_cdp_subnet(ranges, found_devices)
+
     if 'seeds' in config_dict:
         for seed in config_dict['seeds']:
             if 'ip' not in seed:
