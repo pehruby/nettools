@@ -547,9 +547,10 @@ def get_cli_sh_cdp_neighbor(handler):
     cli_out_split = cli_output.split('----------------')      # split output into blocks (list) of devices
     for block in cli_out_split:
         if its_nxos:
-            intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-\(\)]+)\n", block)
+            # intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-\(\)]+)\n", block)
+            intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-]+)", block)        # don't include (XXXXXXXX) part of Device name (Nexus) into device_id
         else:  
-            intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
+            intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-]+)", block)         # ?what characters can be in CDP device name?
         if intstr:                                  # device name was found, process the device entry
             name = intstr.group(1)
             int_dict = {}
