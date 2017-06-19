@@ -587,6 +587,9 @@ def ping(host):
     """
     Returns True if host responds to a ping request
     (c) www.rudiwiki.de
+
+    :param host: IP address
+    :return Boolean: True if IP responds to ping
     """
     import subprocess, platform
 
@@ -601,6 +604,11 @@ def ping(host):
 
 def get_device_list_cdp_subnet(ip_ranges, big_cdp_dict):
     """
+    Discovers devices specified by IP ranges of management interface
+
+    :param ip_ranges: list of ranges, each entry contains dict with range, username, password
+    :param big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
+    :return big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
     """
 
     
@@ -631,9 +639,9 @@ def get_device_list_cdp_seed(seeds, big_cdp_dict):
     If level is > 0 it calls get_device_list_cdp_recur only
     seeds is list of dict, keys: ip, level, username, password
 
-    :param seeds: list of seeds
-    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
-    :return big_cdp_list: list of found devices
+    :param seeds: list of seeds (each item contains ip, username, password, level)
+    :param big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
+    :return big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
     """
 
 
@@ -664,7 +672,9 @@ def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level):
 
     :param ip_seed: IP address of seed device
     :param username: for connection
-    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
+    :param pswd: password
+    :param big_cdp_dict: contains dictionary (lists of hosts and nodes) of already found devices
+    :param level: the level of recurrsion
     :return big_cdp_dict: dict of found devices
     """
 
