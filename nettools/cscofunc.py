@@ -1,6 +1,6 @@
 ''' Module implements functions which read/change configuration of Cisco equipment
 
-'''
+ '''
 
 # pylint: disable=C0301, C0103
 
@@ -650,12 +650,19 @@ def get_device_list_cdp_seed(seeds, big_cdp_dict):
     for seed in seeds:
         if seed['level'] < 0:
             return big_cdp_dict
+        seed_item = get_device_info(seed['ip'], seed['username'], seed['password'])    # get info about seed devic
+        retval = is_cdp_device_in_list(big_cdp_dict['nodes'], seed_item)
         if seed['level'] == 0:
-            seed_item = get_device_info(seed['ip'], seed['username'], seed['passsword'])    # get info about seed device
-            if not is_cdp_device_in_list(big_cdp_dict['nodes'], seed_item):
+            if retval == 0:    # device was not discovered so far
                 seed_item['was_cdp_analyzed'] = True
                 big_cdp_dict['nodes'].append(seed_item)
-        big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+                big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+            elif retval != 3:   # device was not CDP analyzed so far
+                big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+
+        else:
+            if retval == 0 or retval != 3: # seed device was not discovered or analyzed so far
+                big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
 
 #   ADD INFO THAT SEED WAS CDP ANALYZED !!! ('was_cdp_analyzed'). IF level > 1
 
