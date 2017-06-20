@@ -72,13 +72,10 @@ def main():
     '''
     usage_str = '''
     Prints devices which are paused in PRTG
-    Usage: prtgpaused.py [OPTIONS]
+    Usage: discoverdevices.py [OPTIONS]
     -h,     --help                      display help
-    -i,     --ipaddr                    IP address of PRTG server
-    -u,     --username                  username
-    -p,     --password                  password, optional
-    -d,     --days                      more than days paused, default 0
-    -o,     --objid                     PRTG object id where to start, default 0
+    -c,     --cfgfile                   yaml config file                     
+    -o,     --outfile                   csv outputfile
     '''
     username = ''
     pswd = ''
@@ -96,7 +93,7 @@ def main():
     argv = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(argv, "hp:i:u:c:o:", ["help", "password=", "username=", "cfgfile=", "outfile="])
+        opts, args = getopt.getopt(argv, "hc:o:", ["help", "cfgfile=", "outfile="])
     except getopt.GetoptError:
         print(usage_str)
         sys.exit(2)
@@ -105,10 +102,6 @@ def main():
             print(usage_str)
             sys.exit()
 
-        elif opt in ("-u", "--username"):
-            username = arg
-        elif opt in ("-p", "--password"):
-            pswd = arg
         elif opt in ("-c", "--cfgfile"):
             config_file = arg
         elif opt in ("-o", "--outfile"):
