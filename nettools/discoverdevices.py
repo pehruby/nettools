@@ -71,7 +71,7 @@ def main():
     ''' Main
     '''
     usage_str = '''
-    Prints devices which are paused in PRTG
+    Discovers devices using CDP
     Usage: discoverdevices.py [OPTIONS]
     -h,     --help                      display help
     -c,     --cfgfile                   yaml config file                     
