@@ -645,27 +645,35 @@ def get_device_list_cdp_seed(seeds, big_cdp_dict):
     :return big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
     """
 
-
+    tmp_node_list = []
 
     for seed in seeds:
         if seed['level'] < 0:
             return big_cdp_dict
-        seed_item = get_device_info(seed['ip'], seed['username'], seed['password'])    # get info about seed devic
+        seed_item = get_device_info(seed['ip'], seed['username'], seed['password'])    # get info about seed device
         retval = is_cdp_device_in_list(big_cdp_dict['nodes'], seed_item)
         if seed['level'] == 0:
             if retval == 0:    # device was not discovered so far
                 seed_item['was_cdp_analyzed'] = True
                 big_cdp_dict['nodes'].append(seed_item)
                 big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
-            elif retval != 3:   # device was not CDP analyzed so far
+            elif retval != 3:   # device was not CDP analyzed so far (i.e. sh cdp neighbor of this device was not analyzed)
                 big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
 
         else:
-            if retval == 0 or retval != 3: # seed device was not discovered or analyzed so far
+            if retval == 0 or retval != 3: # seed device was not discovered or not analyzed so far
                 big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
 
-#   ADD INFO THAT SEED WAS CDP ANALYZED !!! ('was_cdp_analyzed'). IF level > 1
-
+        #   add info that seed device was already CDP analyzed ('was_cdp_analyzed'). IF level > 1
+        for item in big_cdp_dict['nodes']:          # go through all nodes found
+            if item['device_id'] == seed_item['device_id']:     # is it current seed device?
+                if 'was_cdp_analyzed' not in item:              # if was_cdp_analyzed key doesn't exist or is False, make it True
+                    item['was_cdp_analyzed'] = True
+                elif not item['was_cdp_analyzed']:
+                    item['was_cdp_analyzed'] = True
+            
+            tmp_node_list.append(item)
+        big_cdp_dict['nodes'] = tmp_node_list
     return big_cdp_dict
 
 
@@ -749,7 +757,7 @@ def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level):
             else:
                 if level > 0:
                     cdp_analyzed_item.append(item)      # list of items which were CDP analyzed but were already added in big_cdp_dict without this information
-    for item in big_cdp_dict['nodes']:
+    for item in big_cdp_dict['nodes']:              # update big_cdp_dict list with info that certain devices (in cdp_analyzed_item) were cdp_analyzed
         if is_cdp_device_in_list(cdp_analyzed_item, item):
             item['was_cdp_analyzed'] = True         # add info that item was CDP analyzed, this info is useful when range based discovery follows
         tmp_node_list.append(item)

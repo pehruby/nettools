@@ -5,10 +5,10 @@
     Usage: discoverdevices.py [OPTIONS]
     -h,     --help                      display help
     -c,     --cfgfile                   yaml config file                     
-    -o,     --outfile                   csv outputfile
+    -o,     --outfile                   csv outputfile, optional
 ```
 
-### YAML file format
+### YAML configuration file format
 ```
 ---
 seeds:
