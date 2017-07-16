@@ -24,20 +24,18 @@ def main():
     -i,     --ipaddr                    IP address of PRTG server
     -u,     --username                  username
     -p,     --password                  password, optional
-    -d,     --days                      more than days paused, default 0
     -o,     --objid                     PRTG object id where to start, default 0
     '''
     username = ''
     pswd = ''
     ip_prtg = ''
     sensorlist = []
-    days_paused = 0
     obj_id = 0
     
     argv = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(argv, "hp:i:u:d:o:", ["help", "password=", "ipaddr=", "username=", "days=", "objid="])
+        opts, args = getopt.getopt(argv, "hp:i:u:o:", ["help", "password=", "ipaddr=", "username=", "objid="])
     except getopt.GetoptError:
         print(usage_str)
         sys.exit(2)
