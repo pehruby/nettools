@@ -1,6 +1,6 @@
 ''' Module implements functions which read/change configuration of Cisco equipment
 
-'''
+ '''
 
 # pylint: disable=C0301, C0103
 
@@ -8,6 +8,7 @@ import sys
 import re
 import requests
 import json
+import ipaddress
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException
 from paramiko.ssh_exception import SSHException
@@ -546,9 +547,10 @@ def get_cli_sh_cdp_neighbor(handler):
     cli_out_split = cli_output.split('----------------')      # split output into blocks (list) of devices
     for block in cli_out_split:
         if its_nxos:
-            intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-\(\)]+)\n", block)
+            # intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-\(\)]+)\n", block)
+            intstr = re.search(r"Device ID:([A-Za-z0-9/\._\-]+)", block)        # don't include (XXXXXXXX) part of Device name (Nexus) into device_id
         else:  
-            intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-\(\)]+)\n", block)         # ?what characters can be in CDP device name?
+            intstr = re.search(r"Device ID:\s+([A-Za-z0-9/\._\-]+)", block)         # ?what characters can be in CDP device name?
         if intstr:                                  # device name was found, process the device entry
             name = intstr.group(1)
             int_dict = {}
@@ -582,97 +584,218 @@ def get_cli_sh_cdp_neighbor(handler):
             cdp_list.append(int_dict)
     return cdp_list
 
-def get_device_list_cdp(ip_seed, username, pswd, big_cdp_list, level):
+def ping(host):
+    """
+    Returns True if host responds to a ping request
+    (c) www.rudiwiki.de
+
+    :param host: IP address
+    :return Boolean: True if IP responds to ping
+    """
+    import subprocess, platform
+
+    # Ping parameters as function of OS
+    ping_str = "-n 1" if  platform.system().lower()=="windows" else "-c 1"
+    args = "ping " + " " + ping_str + " " + host
+    need_sh = False if  platform.system().lower()=="windows" else True
+
+    # Ping
+    return subprocess.call(args, shell=need_sh) == 0
+
+
+def get_device_list_cdp_subnet(ip_ranges, big_cdp_dict):
+    """
+    Discovers devices specified by IP ranges of management interface
+
+    :param ip_ranges: list of ranges, each entry contains dict with range, username, password
+    :param big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
+    :return big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
+    """
+
+    
+
+    for ip_range in ip_ranges:
+        net = ipaddress.ip_network(ip_range['range'])
+        for host in net.hosts():        # go through every IP in subnet range
+            if ping(host.exploded):              # does IP responds to ping ?
+                one_item = get_device_info(host.exploded, ip_range['username'], ip_range['password'])    # get info about device
+                if one_item:            # one_item is not None
+                    retval = is_cdp_device_in_list(big_cdp_dict['nodes'], one_item)
+                    if retval == 0:     # device is not in big_cdp_dict
+                        one_item['found_via_cdp'] = False
+                        big_cdp_dict['nodes'].append(one_item)
+                    elif retval != 3:    # device is in big_cdp_dict but was not yet analyzed for CDP info
+                        big_cdp_dict = get_device_list_cdp_recur(host.exploded, ip_range['username'], ip_range['password'], big_cdp_dict, 0)
+
+#    for item in big_cdp_dict['hosts']:
+#        big_cdp_list.append(item)
+#    for item in big_cdp_dict['nodes']:
+#        big_cdp_list.append(item)
+    return big_cdp_dict
+
+def get_device_list_cdp_seed(seeds, big_cdp_dict):
     """
     Discovers network devices using CDP protocol
     Check level. In case level is 0, calls get_device_info and then get_device_list_cdp_recur.
     If level is > 0 it calls get_device_list_cdp_recur only
+    seeds is list of dict, keys: ip, level, username, password
 
-    :param ip_seed: IP address of seed device
-    :param username: for connection
-    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
-    :return big_cdp_list: list of found devices
+    :param seeds: list of seeds (each item contains ip, username, password, level)
+    :param big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
+    :return big_cdp_dict: dictionary of two list of found devices (hosts, nodes)
     """
 
-    if level < 0:
-        return big_cdp_list
-    if level == 0:
-        seed_item = get_device_info(ip_seed, username, pswd)
-        big_cdp_list.append(seed_item)
-    big_cdp_list = get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_list, level)
-    return big_cdp_list
+    tmp_node_list = []
+
+    for seed in seeds:
+        if seed['level'] < 0:
+            return big_cdp_dict
+        seed_item = get_device_info(seed['ip'], seed['username'], seed['password'])    # get info about seed device
+        retval = is_cdp_device_in_list(big_cdp_dict['nodes'], seed_item)
+        if seed['level'] == 0:
+            if retval == 0:    # device was not discovered so far
+                seed_item['was_cdp_analyzed'] = True
+                big_cdp_dict['nodes'].append(seed_item)
+                big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+            elif retval != 3:   # device was not CDP analyzed so far (i.e. sh cdp neighbor of this device was not analyzed)
+                big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+
+        else:
+            if retval == 0 or retval != 3: # seed device was not discovered or not analyzed so far
+                big_cdp_dict = get_device_list_cdp_recur(seed['ip'], seed['username'], seed['password'], big_cdp_dict, seed['level'])
+
+        #   add info that seed device was already CDP analyzed ('was_cdp_analyzed'). IF level > 1
+        for item in big_cdp_dict['nodes']:          # go through all nodes found
+            if item['device_id'] == seed_item['device_id']:     # is it current seed device?
+                if 'was_cdp_analyzed' not in item:              # if was_cdp_analyzed key doesn't exist or is False, make it True
+                    item['was_cdp_analyzed'] = True
+                elif not item['was_cdp_analyzed']:
+                    item['was_cdp_analyzed'] = True
+            
+            tmp_node_list.append(item)
+        big_cdp_dict['nodes'] = tmp_node_list
+    return big_cdp_dict
 
 
-def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_list, level):
+def get_device_list_cdp_recur(ip_seed, username, pswd, big_cdp_dict, level):
     """
     Discovers network devices using CDP protocol by recurrent way. 'level' defines level of recurency, i.e level 0 means that only seed device is conntacted and neighbors of this device are not
     It doesn't contain info about seed device if called with level = 0 !!!
-    List of found devices countains item defined in get_cli_sh_cdp_neighbor function. port_id, intf_id contain unusable values
+    Returs dict which contains two list. 'nodes' list contains routers, switches, ..., 'hosts' list contains phones
+    Both lists contain found devices. Each item in list is dictionary whose structure is defined in get_cli_sh_cdp_neighbor function. Keys port_id, intf_id contain unusable values
 
-    !!! Upravit, aby se neporovn8vala Host zarizeni !!!
+    To do: ad device name which is end device (phone) connected to
 
     :param ip_seed: IP address of seed device
     :param username: for connection
-    :param big_cdp_list: during recurrsion contains list of already found devices, during normal call should be [] empty
-    :return big_cdp_list: list of found devices
+    :param pswd: password
+    :param big_cdp_dict: contains dictionary (lists of hosts and nodes) of already found devices
+    :param level: the level of recurrsion
+    :return big_cdp_dict: dict of found devices
     """
 
     this_cdp_list = []
     neigbors_to_conntact = []
-    big_cdp_list_for_neighbor = big_cdp_list[:]     # device list which is to be passed to neighbors recurently, at the beginning it is copy of obtained 'big_cdp_list'
-    neighbor_cdp_list = []
+    big_cdp_dict_for_neighbor = {}
+    big_cdp_dict_for_neighbor['hosts'] = []
+    big_cdp_dict_for_neighbor['nodes'] = []
+    cdp_analyzed_item = []
+    tmp_node_list = []
 
     try:
         net_connect = ConnectHandler(device_type='cisco_ios', ip=ip_seed, username=username, password=pswd)     # connect to seed
     except NetMikoTimeoutException:
         print("- unable to connect to the device", ip_seed, ", timeout")
-        return this_cdp_list
+        return big_cdp_dict_for_neighbor            # empty dict
     except (EOFError, SSHException):
         print("- unable to connect to the device", ip_seed, ", error")
-        return this_cdp_list
+        return big_cdp_dict_for_neighbor
+
+    big_cdp_dict_for_neighbor['nodes'] = big_cdp_dict['nodes'][:]     # device list which is to be passed to neighbors recurently, at the beginning it is copy of obtained 'big_cdp_list'
     
+    # Collect CDP info of this device
     this_cdp_list = get_cli_sh_cdp_neighbor(net_connect)        # get list of neighbors of this device
     net_connect.disconnect()
     for item in this_cdp_list:          # go through all neighbors
-        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, item):  # is new device? i.e. not already contained in big list which is to be sent recurently to other neighbors
-            big_cdp_list_for_neighbor.append(item)                      # yes it is
-            if not is_cdp_device_in_list(neigbors_to_conntact, item):
-                neigbors_to_conntact.append(item)                       # add it to neighbors which we are going to recurently call (if level > 0)
+        if is_cdp_device_endnode(item):  # is it end node (phone, ...) ?
+            big_cdp_dict['hosts'].append(item)      # add it without any checks
+        else:
+            is_in_list = is_cdp_device_in_list(big_cdp_dict_for_neighbor['nodes'], item)  # is new device? i.e. not already contained in big list which is to be sent recurently to other neighbors
+            if is_in_list == 0:
+                big_cdp_dict_for_neighbor['nodes'].append(item)                      # yes it is
+                if not is_cdp_device_in_list(neigbors_to_conntact, item):
+                    neigbors_to_conntact.append(item)                       # add it to neighbors which we are going to recurently call (if level > 0)
+            if is_in_list == 1:     # it is already in list but value in list is not obtained using CDP
+                None             # to be processed
     
+    # Process each neighbor device (routers, switches) using this function recurrently (ip_seed is neighbor's IP)
     if level > 0:
         for item in neigbors_to_conntact:           # go through all newly found neighbors
-            if 'Router' in item['capability'] or 'Switch' in item['capability']:        # is neighbor router or switch?
+            if 'Router' in item['capability'] or 'Switch' in item['capability']:        # is device router or switch?:
                 if is_ip_valid(item['ip_addr']):
                     print("Going to analyze:", item['device_id'], item['ip_addr'])        # test
-                    neighbor_cdp_list = get_device_list_cdp_recur(item['ip_addr'], username, pswd, big_cdp_list_for_neighbor, level-1)    # call recurently neighbor, decrement level
-                    for neigh_item in neighbor_cdp_list:        # go through all neighbors behind 'item'
-                        if not is_cdp_device_in_list(big_cdp_list, neigh_item): # neigh_item not yet in big_cdp_list ?
-                            big_cdp_list.append(neigh_item)                     # add it
-                        if not is_cdp_device_in_list(big_cdp_list_for_neighbor, neigh_item):    #neigh_item not yet in list which is to be sent to other neighbors?
-                            big_cdp_list_for_neighbor.append(neigh_item)                        # add it
+                    big_cdp_dict_for_neighbor['hosts'] = []     # don't pass hosts to child (otherwise they are returned back and added to target dict again)
+                    neighbor_cdp_dict = get_device_list_cdp_recur(item['ip_addr'], username, pswd, big_cdp_dict_for_neighbor, level-1)    # call recurently neighbor, decrement level
+                    for neigh_item in neighbor_cdp_dict['nodes']:        # go through all neighbors behind 'item'
+                        if not is_cdp_device_in_list(big_cdp_dict['nodes'], neigh_item): # neigh_item not yet in big_cdp_list ?
+                            big_cdp_dict['nodes'].append(neigh_item)                     # add it
+                        if not is_cdp_device_in_list(big_cdp_dict_for_neighbor['nodes'], neigh_item):    #neigh_item not yet in list which is to be sent to other neighbors?
+                            big_cdp_dict_for_neighbor['nodes'].append(neigh_item)                        # add it
+                    for neigh_item in neighbor_cdp_dict['hosts']:
+                        big_cdp_dict['hosts'].append(neigh_item)    # add hosts behind neighbor directly to target (returned) dict
+                        # print("Debug - host append, seed:", ip_seed, "host ip", neigh_item['ip_addr'])
                 else:
                     print("Invalid IP address:", item['ip_addr'], "device:", item['device_id'])
 
-
+    # Add neighbors of "child" devices to target dict, if they are not already there. Nodes only. Hosts are already in target dict.
     for item in this_cdp_list:
-        if not is_cdp_device_in_list(big_cdp_list, item):
-            big_cdp_list.append(item)       # add neigbors of this current device to big_cdp_list (if they are not already there)
-    return big_cdp_list
+        if not is_cdp_device_endnode(item):        # end nodes are already in 'hosts' list
+            if not is_cdp_device_in_list(big_cdp_dict['nodes'], item):
+                if level > 0:               # if level > 0, the device was analyzed using get_device_list_cdp_rec in this call of the function (couple of lines above), the info is used is range discovery
+                    item['was_cdp_analyzed'] = True
+                big_cdp_dict['nodes'].append(item)       # add neigbors of this current device to big_cdp_list (if they are not already there)
+            else:
+                if level > 0:
+                    cdp_analyzed_item.append(item)      # list of items which were CDP analyzed but were already added in big_cdp_dict without this information
+    for item in big_cdp_dict['nodes']:              # update big_cdp_dict list with info that certain devices (in cdp_analyzed_item) were cdp_analyzed
+        if is_cdp_device_in_list(cdp_analyzed_item, item):
+            item['was_cdp_analyzed'] = True         # add info that item was CDP analyzed, this info is useful when range based discovery follows
+        tmp_node_list.append(item)
+    big_cdp_dict['nodes'] = tmp_node_list
+    return big_cdp_dict
 
 
 def is_cdp_device_in_list(dlist, device):
     """
-    Is device contained in dlist. 
+    Is device contained in dlist.
 
     :param dlist: list of devices (list of CDP entries)
     :param device: device to be checked against dlist
-    :return Boolean:
+    :return int: 0 - not found, 1 - found, 2 -found (but device in list was not discovered using CDP), 3 - found (and was analyzed for CDP information)
     """
 
     for item in dlist:
         if item['device_id'] == device['device_id']:
-            return True
+            if 'found_via_cdp' in item:
+                if not item['found_via_cdp']:
+                    return 2
+            if 'was_cdp_analyzed' in item:
+                if item['was_cdp_analyzed']:
+                    return 3
+            return 1
+    return 0
+
+def is_cdp_device_endnode(device):
+    """
+    Is device an end device (phone) ?
+
+    :param device: one cdp entry dict
+    :return Boolean:
+    """
+    if 'Phone' in device['capability'] or 'Trans-Bridge' in device['capability']:
+        return True
     return False
+
 
 def get_device_info(ip_addr, username, pswd):
     """

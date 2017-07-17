@@ -5,6 +5,7 @@ import getpass
 import getopt
 import os
 import yaml
+import ipaddress
 
 import cscofunc
 
@@ -70,25 +71,29 @@ def main():
     ''' Main
     '''
     usage_str = '''
-    Prints devices which are paused in PRTG
-    Usage: prtgpaused.py [OPTIONS]
+    Discovers devices using CDP
+    Usage: discoverdevices.py [OPTIONS]
     -h,     --help                      display help
-    -i,     --ipaddr                    IP address of PRTG server
-    -u,     --username                  username
-    -p,     --password                  password, optional
-    -d,     --days                      more than days paused, default 0
-    -o,     --objid                     PRTG object id where to start, default 0
+    -c,     --cfgfile                   yaml config file                     
+    -o,     --outfile                   csv outputfile
     '''
     username = ''
     pswd = ''
     found_devices = []
     passwords = {}
+    config_file = ''
     output_file = ''
+    seeds = []
+    ranges = []
+
+    big_cdp_dict = {}
+    big_cdp_dict['nodes'] = []
+    big_cdp_dict['hosts'] = []
     
     argv = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(argv, "hp:i:u:c:o:", ["help", "password=", "username=", "cfgfile=", "outfile="])
+        opts, args = getopt.getopt(argv, "hc:o:", ["help", "cfgfile=", "outfile="])
     except getopt.GetoptError:
         print(usage_str)
         sys.exit(2)
@@ -97,23 +102,22 @@ def main():
             print(usage_str)
             sys.exit()
 
-        elif opt in ("-u", "--username"):
-            username = arg
-        elif opt in ("-p", "--password"):
-            pswd = arg
         elif opt in ("-c", "--cfgfile"):
             config_file = arg
         elif opt in ("-o", "--outfile"):
             output_file = arg
 
 
-
+    if not config_file:
+        print("Config file not specified")
+        sys.exit(2)
 
     config_dict = load_cfg_file(config_file)
     # sanity checks
 
 
     
+
     if 'seeds' in config_dict:
         for seed in config_dict['seeds']:
             if 'ip' not in seed:
@@ -125,11 +129,33 @@ def main():
             if 'level' in seed:
                 level = seed['level']
             else:
-                level = 5
+                seed['level'] = 5
             if not seed['username'] in passwords:
                 passwords[seed['username']] = getpass.getpass("Password for "+seed['username']+":")
-        for seed in config_dict['seeds']:
-            found_devices = cscofunc.get_device_list_cdp(seed['ip'], username, passwords[username], found_devices, level)
+            seed['password'] = passwords[seed['username']]
+            seeds.append(seed)
+
+        big_cdp_dict = cscofunc.get_device_list_cdp_seed(seeds, big_cdp_dict)
+
+    if 'ranges' in config_dict:
+        for ip_range in config_dict['ranges']:
+            if 'range' not in ip_range:
+                print('IP range is not specified in config file')
+                sys.exit(1)
+            try:
+                test_ip = ipaddress.ip_network(ip_range['range'])
+            except ValueError:
+                print('Address/mask is invalid for IPv4:', ip_range['range'])
+                sys.exit(1)
+            if not ip_range['username'] in passwords:
+                passwords[ip_range['username']] = getpass.getpass("Password for "+ip_range['username']+":")
+            ip_range['password'] = passwords[ip_range['username']]
+            ranges.append(ip_range)
+        big_cdp_dict = cscofunc.get_device_list_cdp_subnet(ranges, big_cdp_dict)
+    for item in big_cdp_dict['hosts']:
+        found_devices.append(item)
+    for item in big_cdp_dict['nodes']:
+        found_devices.append(item)
     if not output_file:
         print_devices(found_devices)            # print output to screen
     else:
